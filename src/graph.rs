@@ -7,12 +7,12 @@ use std::hash::Hash;
 
 use std::fmt;
 
-// Graph holds the parameters and the edges of the graph.
+// Graph holds the parameters and the edges of the graph. This is a special type
+// of graph that has a *proper* labelling: for each edge (i,j), we have i < j.
 #[derive(Debug)]
 pub struct Graph {
     // parents holds all parents of all nodes. If j = parents[i][u], then there
-    // is an edge (j -> i+1), i.e. j is the parent of i. i+1 because the first
-    // node 0 never have parents so the array is never filled for the first cell.
+    // is an edge (j -> i), i.e. j is the parent of i.
     // The capacity of the graph is the size of the vector - Some nodes may be
     // absent when counted, i.e. node i may not have any parent and may not be
     // the parent of any other node. In that case, it is not included in the graph G
@@ -47,13 +47,16 @@ impl Graph {
         g
     }
 
+    // depth returns the longest depth found in the graph
+    //fn depth(&self) -> usize {}
+
     // remove returns a new graph with the specified nodes removed
     // TODO inefficient at the moment; may be faster ways.
     fn remove(&self, nodes: Vec<usize>) -> Graph {
         let mut out = Vec::with_capacity(self.parents.len());
         for i in 0..self.parents.len() {
             let parents = self.parents.get(i).unwrap();
-            let new_parents = if nodes.contains(&(i + 1)) {
+            let new_parents = if nodes.contains(&i) {
                 // no parent for a deleted node
                 Vec::new()
             } else {
@@ -80,10 +83,10 @@ impl Graph {
     fn bucket_sample(&mut self) {
         let mut rng = self.rng();
         for node in 0..self.parents.len() {
-            let mut parents = Vec::with_capacity(2);
+            let mut parents = Vec::new();
             match node {
                 // no parents for the first node
-                0 => continue,
+                0 => {}
                 // second node only has the first node as parent
                 1 => {
                     parents.push(0);
@@ -125,7 +128,7 @@ impl Graph {
             let mut parents = Vec::with_capacity(degree);
             match node {
                 // no parents for the first node
-                0 => continue,
+                0 => {}
                 // second node only has the first node as parent
                 1 => {
                     parents.push(0);
@@ -201,7 +204,7 @@ mod tests {
             assert!(parents.len() >= 1 && parents.len() <= 2);
             // test there's at least the direct parent
             // == i since first cell is for node 1
-            assert!(parents.iter().find(|x| **x == i).is_some());
+            assert!(parents.iter().find(|x| **x == i - 1).is_some());
             // test the other parent is less
             if parents.len() == 2 {
                 assert!(parents.iter().find(|x| **x < i).is_some());
@@ -218,7 +221,7 @@ mod tests {
             assert!(parents.len() >= 1 && parents.len() <= degree);
             // test there's at least the direct parent
             // == i since first cell is for node 1
-            assert!(parents.iter().find(|x| **x == i).is_some());
+            assert!(parents.iter().find(|x| **x == i - 1).is_some());
             // test all the other parents are less
             if parents.len() > 1 {
                 assert_eq!(
@@ -240,7 +243,7 @@ mod tests {
         // 0 -> 2, 2 -> 4
         // Remove nodes 1 and 3
         // -> final graph 0 -> 2, 2 -> 4
-        let p1 = vec![vec![0], vec![0, 1], vec![2], vec![2, 3]];
+        let p1 = vec![vec![], vec![0], vec![0, 1], vec![2], vec![2, 3]];
         let g1 = Graph {
             parents: p1,
             seed: TEST_SEED,
@@ -249,8 +252,8 @@ mod tests {
 
         let nodes = vec![1, 3];
         let g3 = g1.remove(nodes);
-        let expected = vec![vec![], vec![0], vec![], vec![2]];
-        assert_eq!(g3.parents.len(), 4);
+        let expected = vec![vec![], vec![], vec![0], vec![], vec![2]];
+        assert_eq!(g3.parents.len(), 5);
         assert_eq!(g3.parents, expected);
     }
 }
