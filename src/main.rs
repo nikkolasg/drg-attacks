@@ -1,4 +1,5 @@
 mod graph;
+mod utils;
 use graph::*;
 use rand::Rng;
 
