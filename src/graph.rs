@@ -272,7 +272,7 @@ mod tests {
     }
 
     #[test]
-    fn depth() {
+    fn graph_depth() {
         let p1 = vec![vec![], vec![0], vec![1], vec![2], vec![3]];
         assert_eq!(graph_from(p1).depth(), 4);
 
