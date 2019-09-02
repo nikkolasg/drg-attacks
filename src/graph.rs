@@ -1,5 +1,3 @@
-extern crate rand;
-extern crate rand_chacha;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use std::collections::HashSet;
@@ -77,7 +75,7 @@ impl Graph {
                 // only take parents which are not in the list of nodes
                 parents
                     .into_iter()
-                    .filter(|parent| !nodes.contains(parent))
+                    .filter(|&parent| !nodes.contains(parent))
                     .map(|&p| p)
                     .collect::<Vec<usize>>()
             };
@@ -128,10 +126,6 @@ impl Graph {
         }
     }
 
-    fn rng(&self) -> ChaCha20Rng {
-        ChaCha20Rng::from_seed(self.seed)
-    }
-
     // Implementation of the meta-graph construction algorithm described in page 22
     // of the porep paper https://web.stanford.edu/~bfisch/porep_short.pdf
     // It produces a degree-d graph on average.
@@ -177,6 +171,14 @@ impl Graph {
             self.parents.push(parents);
         }
     }
+
+    fn rng(&self) -> ChaCha20Rng {
+        ChaCha20Rng::from_seed(self.seed)
+    }
+
+    pub fn parents(&self) -> &Vec<Vec<usize>> {
+        &self.parents
+    }
 }
 
 impl fmt::Display for Graph {
@@ -196,7 +198,7 @@ fn remove_duplicate<T: Hash + Eq>(elements: &mut Vec<T>) {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 
     use super::*;
 
@@ -280,7 +282,7 @@ mod tests {
         assert_eq!(graph_from(p2).depth(), 3);
     }
 
-    fn graph_from(parents: Vec<Vec<usize>>) -> Graph {
+    pub fn graph_from(parents: Vec<Vec<usize>>) -> Graph {
         Graph {
             parents: parents,
             seed: TEST_SEED,
