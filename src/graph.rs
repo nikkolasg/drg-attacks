@@ -48,7 +48,21 @@ impl Graph {
     }
 
     // depth returns the longest depth found in the graph
-    //fn depth(&self) -> usize {}
+    fn depth(&self) -> usize {
+        self.parents
+            .iter()
+            .fold(Vec::new(), |mut acc, parents| {
+                // take the depth of each parents + 1 then take the max of it
+                match parents.iter().map(|&p| acc[p] + 1).max() {
+                    Some(depth) => acc.push(depth),
+                    None => acc.push(0),
+                };
+                acc
+            })
+            .into_iter()
+            .max()
+            .unwrap()
+    }
 
     // remove returns a new graph with the specified nodes removed
     // TODO inefficient at the moment; may be faster ways.
@@ -255,5 +269,22 @@ mod tests {
         let expected = vec![vec![], vec![], vec![0], vec![], vec![2]];
         assert_eq!(g3.parents.len(), 5);
         assert_eq!(g3.parents, expected);
+    }
+
+    #[test]
+    fn depth() {
+        let p1 = vec![vec![], vec![0], vec![1], vec![2], vec![3]];
+        assert_eq!(graph_from(p1).depth(), 4);
+
+        let p2 = vec![vec![], vec![], vec![0], vec![2], vec![2, 3], vec![3]];
+        assert_eq!(graph_from(p2).depth(), 3);
+    }
+
+    fn graph_from(parents: Vec<Vec<usize>>) -> Graph {
+        Graph {
+            parents: parents,
+            seed: TEST_SEED,
+            algo: DRGAlgo::BucketSample,
+        }
     }
 }
