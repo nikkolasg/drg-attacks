@@ -11,12 +11,48 @@ use super::utils;
 //}
 //}
 
-//// valiant_basic returns a set S such that
-//// depth(G - S) < target.
-//fn valiant_basic_depth(g: &Graph, target: usize) -> Graph {
-//panic!("not implemented");
-//}
+// valiant_basic returns a set S such that depth(G - S) < target.
+// It implements the algo 8 in the https://eprint.iacr.org/2018/944.pdf paper.
+fn valiant_basic(g: &Graph, target: usize) -> Vec<usize> {
+    let partitions = valiant_partitions(g);
+    // TODO replace by a simple bitset or boolean vec
+    let mut chosen: Vec<usize> = Vec::new();
+    let mut s: Vec<usize> = Vec::new();
+    let mut reduced = g.remove(&s);
+    // returns the smallest next partition unchosen
+    // mut is required because it changes chosen which is mut
+    let mut find_next = || -> &Vec<Edge> {
+        match partitions
+            .iter()
+            .enumerate()
+            // only take partitions with edges in it
+            .filter(|&(_, values)| values.len() > 0)
+            // only take the ones we didn't choose before
+            .filter(|&(i, _)| !chosen.contains(&i))
+            // take the smallest one
+            .min_by_key(|&(_, values)| values.len())
+        {
+            Some((i, val)) => {
+                chosen.push(i);
+                val
+            }
+            None => panic!("no more partitions to use"),
+        }
+    };
+    while reduced.depth() > target {
+        let partition = find_next();
+        // add the origin node for each edges in the chosen partition
+        s.extend(partition.iter().fold(Vec::new(), |mut acc, edge| {
+            acc.push(edge.0);
+            acc
+        }));
+        reduced = reduced.remove(&s);
+    }
 
+    return s;
+}
+
+// Edge holds the origin and endpoint of an edge.
 #[derive(Debug, PartialEq)]
 struct Edge(usize, usize);
 
@@ -47,11 +83,11 @@ mod test {
     use super::super::graph;
     use super::*;
 
-    #[test]
-    fn test_valiant_partitions() {
-        // graph 0->1->2->3->4->5->6->7
-        // + 0->2 , 2->4, 4->6
-        let parents = vec![
+    // graph 0->1->2->3->4->5->6->7
+    // + 0->2 , 2->4, 4->6
+
+    lazy_static! {
+        static ref TEST_PARENTS: Vec<Vec<usize>> = vec![
             vec![],
             vec![0],
             vec![0, 1],
@@ -61,7 +97,18 @@ mod test {
             vec![4, 5],
             vec![6],
         ];
-        let graph = graph::tests::graph_from(parents);
+    }
+
+    #[test]
+    fn test_valiant_reduce() {
+        let graph = graph::tests::graph_from(TEST_PARENTS.to_vec());
+        let set = valiant_basic(&graph, 2);
+        assert_eq!(set, vec![2, 3, 0, 1, 4, 5]);
+    }
+
+    #[test]
+    fn test_valiant_partitions() {
+        let graph = graph::tests::graph_from(TEST_PARENTS.to_vec());
         let edges = valiant_partitions(&graph);
         assert_eq!(edges.len(), utils::node_bitsize());
         edges

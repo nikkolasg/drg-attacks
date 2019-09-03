@@ -3,6 +3,8 @@ pub mod graph;
 mod utils;
 use graph::*;
 use rand::Rng;
+#[macro_use]
+extern crate lazy_static;
 
 fn main() {
     println!("DRG graph generation");

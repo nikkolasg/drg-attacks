@@ -46,7 +46,7 @@ impl Graph {
     }
 
     // depth returns the longest depth found in the graph
-    fn depth(&self) -> usize {
+    pub fn depth(&self) -> usize {
         self.parents
             .iter()
             .fold(Vec::new(), |mut acc, parents| {
@@ -64,7 +64,7 @@ impl Graph {
 
     // remove returns a new graph with the specified nodes removed
     // TODO inefficient at the moment; may be faster ways.
-    fn remove(&self, nodes: Vec<usize>) -> Graph {
+    pub fn remove(&self, nodes: &Vec<usize>) -> Graph {
         let mut out = Vec::with_capacity(self.parents.len());
         for i in 0..self.parents.len() {
             let parents = self.parents.get(i).unwrap();
@@ -267,7 +267,7 @@ pub mod tests {
         };
 
         let nodes = vec![1, 3];
-        let g3 = g1.remove(nodes);
+        let g3 = g1.remove(&nodes);
         let expected = vec![vec![], vec![], vec![0], vec![], vec![2]];
         assert_eq!(g3.parents.len(), 5);
         assert_eq!(g3.parents, expected);
