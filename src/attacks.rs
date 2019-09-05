@@ -23,9 +23,37 @@ fn greedy_reduce(g: &Graph, target: usize) -> HashSet<usize> {
     s
 }
 
+// append_removal is an adaptation of "SelectRemovalNodes" function in Algorithm 6
+// of https://eprint.iacr.org/2018/944.pdf. Instead of returning the set of nodes
+// to remove, it simply adds them to the given set.
+fn append_removal(
+    g: &Graph,
+    set: &mut HashSet<usize>,
+    paths_count: &Vec<usize>,
+    d: usize,
+    radius: usize,
+    k: usize,
+) {
+    if radius == 0 {
+        set.insert(
+            // get the max node from the paths_count
+            paths_count
+                .iter()
+                .enumerate()
+                .max_by_key(|(node, &count)| count)
+                .unwrap()
+                .0,
+        );
+        return;
+    }
+}
+
 // count_paths implements the CountPaths method in Algo. 5 for the greedy algorithm
-// It returns the number of incident paths of the given length for each node.
-fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize) -> Vec<usize> {
+// It returns:
+// 1. the number of incident paths of the given length for each node.
+//      Index is the the index of the node, value is the paths count.
+// 2. the top k nodes indexes that have the higest incident paths
+fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize, k: usize) -> (Vec<usize>, Vec<usize>) {
     // dimensions are [n][depth]
     let mut ending_paths = Vec::new();
     let mut starting_paths = Vec::new();
@@ -66,12 +94,22 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize) -> Vec<usize> {
 
     // counting how many incident paths of length d there is for each node
     let mut incidents = vec![0; g.cap()];
+    // the indexes of the nodes with the highest number of incident paths
+    let mut topk_idx = vec![0; k];
+    // the incident paths number - to compare
+    let mut topk_val = vec![0; k];
     for i in 0..g.cap() {
         for d in 0..=length {
             incidents[i] += starting_paths[i][d] * ending_paths[i][length - d];
         }
+        let (idx, val) = topk_val.iter().enumerate().min_by_key(|(_, &v)| v).unwrap();
+        if *val < incidents[i] {
+            topk_val[idx] = incidents[i];
+            topk_idx[idx] = i;
+        }
     }
-    incidents
+    //topk_idx.sort();
+    (incidents, topk_idx)
 }
 
 // valiant_basic returns a set S such that depth(G - S) < target.
@@ -179,8 +217,10 @@ mod test {
         let target_length = 2;
         // test with empty set to remove
         let s = HashSet::new();
-        let result = count_paths(&graph, &s, target_length);
-        assert_eq!(result, vec![5, 5, 7, 6, 7, 3]);
+        let k = 3;
+        let (counts, topk) = count_paths(&graph, &s, target_length, k);
+        assert_eq!(counts, vec![5, 5, 7, 6, 7, 3]);
+        assert_eq!(topk, vec![3, 4, 2]); // order is irrelevant
     }
 
     #[test]
