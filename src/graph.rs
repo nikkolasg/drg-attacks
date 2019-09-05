@@ -2,6 +2,7 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use std::collections::HashSet;
 use std::hash::Hash;
+use std::iter::FromIterator;
 
 use std::fmt;
 
@@ -64,7 +65,7 @@ impl Graph {
 
     // remove returns a new graph with the specified nodes removed
     // TODO inefficient at the moment; may be faster ways.
-    pub fn remove(&self, nodes: &Vec<usize>) -> Graph {
+    pub fn remove(&self, nodes: &HashSet<usize>) -> Graph {
         let mut out = Vec::with_capacity(self.parents.len());
         for i in 0..self.parents.len() {
             let parents = self.parents.get(i).unwrap();
@@ -266,7 +267,7 @@ pub mod tests {
             algo: DRGAlgo::BucketSample,
         };
 
-        let nodes = vec![1, 3];
+        let nodes = HashSet::from_iter(vec![1, 3].iter().cloned());
         let g3 = g1.remove(&nodes);
         let expected = vec![vec![], vec![], vec![0], vec![], vec![2]];
         assert_eq!(g3.parents.len(), 5);
