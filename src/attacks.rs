@@ -11,6 +11,66 @@ use super::utils;
 //}
 //}
 
+// greedy_reduce implements the Algorithm 5 of https://eprint.iacr.org/2018/944.pdf
+fn greedy_reduce(g: &Graph, target: usize) -> Vec<usize> {
+    let s: Vec<usize> = Vec::new();
+    //let nodes_radius: Vec<usize> = Vec::new();
+    let reduced = g.remove(&s);
+    while reduced.depth() > target {}
+    s
+}
+
+// count_paths implements the CountPaths method in Algo. 5 for the greedy algorithm
+// It returns the number of incident paths of the given length for each node.
+fn count_paths(g: &Graph, s: &Vec<usize>, length: usize) -> Vec<usize> {
+    // dimensions are [n][depth]
+    let mut ending_paths = Vec::new();
+    let mut starting_paths = Vec::new();
+    // initializes the tables with 1 for nodes present in G - S
+    g.parents().iter().enumerate().for_each(|(i, _)| {
+        // TODO slow checking in O(n) - consider changing to bitset of size n
+        let mut length_vec = vec![0; length + 1];
+        if s.contains(&i) {
+            ending_paths.push(length_vec.clone());
+            starting_paths.push(length_vec);
+        } else {
+            length_vec[0] = 1;
+            ending_paths.push(length_vec.clone());
+            starting_paths.push(length_vec);
+        }
+    });
+    // counting phase of all starting/ending paths of all length
+    for d in 1..=length {
+        g.parents().iter().enumerate().for_each(|(i, parents)| {
+            // no need to check if included in S like in C# ref. code
+            // since everything is 0 and of the right size by default
+            //
+            // checking each parents (vs only checking direct + 1parent in C#)
+            ending_paths[i][d] = parents
+                .iter()
+                .fold(0, |acc, &parent| acc + ending_paths[parent][d - 1]);
+
+            // difference vs the pseudo code: like in C#, increase parent count
+            // instead of iterating over children of node i
+            parents.iter().for_each(|&parent| {
+                if s.contains(&parent) {
+                    return;
+                }
+                starting_paths[parent][d] += starting_paths[i][d - 1];
+            });
+        });
+    }
+
+    // counting how many incident paths of length d there is for each node
+    let mut incidents = vec![0; g.cap()];
+    for i in 0..g.cap() {
+        for d in 0..=length {
+            incidents[i] += starting_paths[i][d] * ending_paths[i][length - d];
+        }
+    }
+    incidents
+}
+
 // valiant_basic returns a set S such that depth(G - S) < target.
 // It implements the algo 8 in the https://eprint.iacr.org/2018/944.pdf paper.
 fn valiant_basic(g: &Graph, target: usize) -> Vec<usize> {
@@ -97,6 +157,24 @@ mod test {
             vec![4, 5],
             vec![6],
         ];
+    }
+
+    #[test]
+    fn test_count_paths() {
+        let parents = vec![
+            vec![],
+            vec![0],
+            vec![1, 0],
+            vec![2, 1],
+            vec![3, 2, 0],
+            vec![4],
+        ];
+        let graph = graph::tests::graph_from(parents);
+        let target_length = 2;
+        // test with empty set to remove
+        let s = Vec::new();
+        let result = count_paths(&graph, &s, target_length);
+        assert_eq!(result, vec![5, 5, 7, 6, 7, 3]);
     }
 
     #[test]

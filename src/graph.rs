@@ -63,7 +63,7 @@ impl Graph {
     }
 
     // remove returns a new graph with the specified nodes removed
-    // TODO inefficient at the moment; may be faster ways.
+    // TODO slow path checking in O(n) - consider using bitset for nodes
     pub fn remove(&self, nodes: &Vec<usize>) -> Graph {
         let mut out = Vec::with_capacity(self.parents.len());
         for i in 0..self.parents.len() {
@@ -178,6 +178,10 @@ impl Graph {
 
     pub fn parents(&self) -> &Vec<Vec<usize>> {
         &self.parents
+    }
+
+    pub fn cap(&self) -> usize {
+        self.parents.len()
     }
 }
 
