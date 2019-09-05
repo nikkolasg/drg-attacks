@@ -311,14 +311,6 @@ mod test {
         let graph = graph::tests::graph_from(TEST_PARENTS.to_vec());
         let set = valiant_basic(&graph, 2);
         assert_eq!(set, HashSet::from_iter(vec![0, 2, 3, 4, 6].iter().cloned()));
-        // FIXME: With a previous ordering of the edges and `E_i`s the
-        // basic Valiant attack outputted a set `S` of 6 elements
-        // `{4, 1, 2, 3, 0, 5}`, instead of this new set of only 5.
-        // Both are correct in the sense that keep the depth at 2,
-        // but we'd expect Valiant to always return the smallest set
-        // necessary (hence `valiant_basic` sorts by `E_i` size). This
-        // might just be a product of an unstable search (due in part
-        // to the small graph size) but should be investigated further.
     }
 
     #[test]
