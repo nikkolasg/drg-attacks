@@ -29,22 +29,58 @@ fn greedy_reduce(g: &Graph, target: usize) -> HashSet<usize> {
 fn append_removal(
     g: &Graph,
     set: &mut HashSet<usize>,
-    paths_count: &Vec<usize>,
+    topk: Vec<usize>,
+    nodes_radius: &mut HashSet<usize>,
     d: usize,
     radius: usize,
     k: usize,
 ) {
     if radius == 0 {
-        set.insert(
-            // get the max node from the paths_count
-            paths_count
-                .iter()
-                .enumerate()
-                .max_by_key(|(node, &count)| count)
-                .unwrap()
-                .0,
-        );
+        // take the node with the highest number of incident path
+        set.insert(*topk.iter().max().unwrap());
         return;
+    }
+
+    topk.iter()
+        .filter(|&node| nodes_radius.contains(node))
+        .for_each(|&node| {
+            set.insert(node);
+            // Add node in radius
+        });
+}
+
+// update_radius_set fills the given inradius set with nodes that inside a radius
+// of the given node. Size of the radius is given radius.
+fn update_radius_set(g: &Graph, node: usize, inradius: &mut HashSet<usize>, radius: usize) {
+    let add_direct_nodes = |v: usize, closests: &mut Vec<usize>| {
+        // add all direct parent
+        g.parents()[v]
+            .iter()
+            .for_each(|&parent| closests.push(parent));
+
+        // add all direct children
+        // TODO: compute once children graph and use it again as in C#
+        g.parents()
+            .iter()
+            .enumerate()
+            // if node i has v as parent then it's good
+            .filter(|&(i, parents)| parents.contains(&v))
+            .for_each(|(i, _)| {
+                closests.push(i);
+            });
+    };
+    // insert first the given node and then add the close nodes
+    inradius.insert(node);
+    let mut tosearch = vec![node];
+    // do it recursively "radius" times
+    for i in 0..radius {
+        let mut closests = Vec::new();
+        // grab all direct nodes of those already in radius "i"
+        for &v in tosearch.iter() {
+            add_direct_nodes(v, &mut closests);
+        }
+        tosearch = closests.clone();
+        inradius.extend(closests);
     }
 }
 
@@ -201,11 +237,7 @@ mod test {
             // FIXME: Always have all immediate predecessors as parents
             // by default to simplify manual construction.
         ];
-    }
-
-    #[test]
-    fn test_count_paths() {
-        let parents = vec![
+        static ref GREEDY_PARENTS: Vec<Vec<usize>> = vec![
             vec![],
             vec![0],
             vec![1, 0],
@@ -213,14 +245,32 @@ mod test {
             vec![3, 2, 0],
             vec![4],
         ];
-        let graph = graph::tests::graph_from(parents);
+    }
+
+    #[test]
+    fn test_update_radius() {
+        let graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
+        let node = 2;
+        let mut inradius = HashSet::new();
+
+        update_radius_set(&graph, node, &mut inradius, 1);
+        assert_eq!(inradius, HashSet::from_iter(vec![0, 1, 2, 3, 4]));
+        update_radius_set(&graph, node, &mut inradius, 2);
+        assert_eq!(inradius, HashSet::from_iter(vec![0, 1, 2, 3, 4, 5]));
+    }
+
+    #[test]
+    fn test_count_paths() {
+        let graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
         let target_length = 2;
         // test with empty set to remove
         let s = HashSet::new();
         let k = 3;
         let (counts, topk) = count_paths(&graph, &s, target_length, k);
         assert_eq!(counts, vec![5, 5, 7, 6, 7, 3]);
-        assert_eq!(topk, vec![3, 4, 2]); // order is irrelevant
+        // order is irrelevant
+        assert_eq!(topk, vec![3, 4, 2]);
+        // TODO test with a a non empty s
     }
 
     #[test]
