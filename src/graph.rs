@@ -2,7 +2,6 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use std::collections::HashSet;
 use std::hash::Hash;
-use std::iter::FromIterator;
 
 use std::fmt;
 
@@ -206,6 +205,7 @@ fn remove_duplicate<T: Hash + Eq>(elements: &mut Vec<T>) {
 pub mod tests {
 
     use super::*;
+    use std::iter::FromIterator;
 
     static TEST_SEED: [u8; 32] = [1; 32];
 
