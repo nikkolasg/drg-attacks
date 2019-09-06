@@ -33,15 +33,10 @@ fn greedy_reduce(g: &Graph, target: usize, p: GreedyParams) -> HashSet<usize> {
     println!("graph: {:?}", g);
     let mut count = 0;
     while reduced.depth() > target {
-        println!(" ---- new iteration ----");
         // TODO use p.length when more confidence in the trick
         let (counts, topk) = count_paths(g, &s, target, p.k);
         append_removal(g, &mut s, &topk, &mut inradius, p.radius);
         reduced = reduced.remove(&s);
-        println!("-> counts {:?}", counts);
-        println!("-> topk   {:?}", topk);
-        println!("-> s      {:?}", s);
-        println!("-> radius {:?}", inradius);
         count += 1;
         if count > 3 {
             panic!("aie");
