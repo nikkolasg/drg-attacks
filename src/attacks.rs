@@ -3,38 +3,42 @@ use std::collections::HashSet;
 use crate::graph::Graph;
 use crate::utils;
 
-/*pub enum DepthReduceSet {*/
-//ValiantBasic(usize),
-//}
+pub enum DepthReduceSet {
+    // depth of the resulting G-S graph desired
+    Valiant(usize),
+    // depth of the resulting G-S graph and some specific parameters
+    Greedy(usize, GreedyParams),
+}
 
-//pub fn depth_reduce(g: &Graph, drs: DepthReduceSet) -> Graph {
-//match drs {
-//DepthReduceSet::ValiantBasic(target) => valiant_basic_depth(g, target),
-//}
-//}
+pub fn depth_reduce(g: &Graph, drs: DepthReduceSet) -> HashSet<usize> {
+    match drs {
+        DepthReduceSet::Valiant(target) => valiant_reduce(g, target),
+        DepthReduceSet::Greedy(target, p) => greedy_reduce(g, target, p),
+    }
+}
 
-struct GreedyParams {
+// GreedyParams holds the different parameters to choose for the greedy algorithm
+// such as the radius from which to delete nodes and the heuristic length.
+pub struct GreedyParams {
     // how many k nodes do we "remove" at each iteration in append_removal
-    k: usize,
+    pub k: usize,
     // the radius for the heuristic to delete as well close nodes within a
     // radius of a selected node.
-    radius: usize,
-    #[allow(dead_code)]
+    pub radius: usize,
+    //#[allow(dead_code)]
     // maximum lenth of the path - heuristic for the table produced by count_paths
     // see paragraph below equation 8.
     // TODO: NOT (really) IMPLEMENTED YET - careful work is required
-    length: usize,
+    // pub length: usize,
 }
 // greedy_reduce implements the Algorithm 5 of https://eprint.iacr.org/2018/944.pdf
 fn greedy_reduce(g: &Graph, target: usize, p: GreedyParams) -> HashSet<usize> {
     let mut s = HashSet::new();
     let mut inradius: HashSet<usize> = HashSet::new();
-    let mut reduced = g.remove(&s);
-    while reduced.depth() > target {
+    while g.depth_exclude(&s) > target {
         // TODO use p.length when more confidence in the trick
         let (_, topk) = count_paths(g, &s, target, p.k);
         append_removal(g, &mut s, &topk, &mut inradius, p.radius);
-        reduced = reduced.remove(&s);
     }
     s
 }
@@ -190,14 +194,13 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize, k: usize) -> (Vec<u
     (incidents, topk)
 }
 
-// valiant_basic returns a set S such that depth(G - S) < target.
+// valiant_reduce returns a set S such that depth(G - S) < target.
 // It implements the algo 8 in the https://eprint.iacr.org/2018/944.pdf paper.
-fn valiant_basic(g: &Graph, target: usize) -> HashSet<usize> {
+fn valiant_reduce(g: &Graph, target: usize) -> HashSet<usize> {
     let partitions = valiant_partitions(g);
     // TODO replace by a simple bitset or boolean vec
     let mut chosen: Vec<usize> = Vec::new();
     let mut s = HashSet::new();
-    let mut reduced = g.remove(&s);
     // returns the smallest next partition unchosen
     // mut is required because it changes chosen which is mut
     let mut find_next = || -> &HashSet<Edge> {
@@ -218,14 +221,13 @@ fn valiant_basic(g: &Graph, target: usize) -> HashSet<usize> {
             None => panic!("no more partitions to use"),
         }
     };
-    while reduced.depth() > target {
+    while g.depth_exclude(&s) > target {
         let partition = find_next();
         // add the origin node for each edges in the chosen partition
         s.extend(partition.iter().fold(Vec::new(), |mut acc, edge| {
             acc.push(edge.0);
             acc
         }));
-        reduced = reduced.remove(&s);
     }
 
     return s;
@@ -291,28 +293,16 @@ mod test {
     #[test]
     fn test_greedy() {
         let graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
-        let params = GreedyParams {
-            k: 1,
-            radius: 0,
-            length: 2,
-        };
+        let params = GreedyParams { k: 1, radius: 0 };
         let s = greedy_reduce(&graph, 2, params);
         assert_eq!(s, HashSet::from_iter(vec![3, 2]));
-        let params = GreedyParams {
-            k: 1,
-            radius: 1,
-            length: 2,
-        };
+        let params = GreedyParams { k: 1, radius: 1 };
         let s = greedy_reduce(&graph, 2, params);
         // 1st iteration : counts = [5, 5, 7, 6, 7, 3]
         // 2nd iteration : counts =  [2, 2, 0, 3, 3, 2]
         // so first index 2 then index 3 (takes the minimum in the list)
         assert_eq!(s, HashSet::from_iter(vec![3, 2]));
-        let params = GreedyParams {
-            k: 2,
-            radius: 1,
-            length: 2,
-        };
+        let params = GreedyParams { k: 2, radius: 1 };
         let s = greedy_reduce(&graph, 2, params);
         // since counts = [5, 5, 7, 6, 7, 3] at the first iteration
         // and we can take two nodes, then 2 and 4 are selected
@@ -377,7 +367,7 @@ mod test {
     #[test]
     fn test_valiant_reduce() {
         let graph = graph::tests::graph_from(TEST_PARENTS.to_vec());
-        let set = valiant_basic(&graph, 2);
+        let set = valiant_reduce(&graph, 2);
         assert_eq!(set, HashSet::from_iter(vec![0, 2, 3, 4, 6]));
     }
 

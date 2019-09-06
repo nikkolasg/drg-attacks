@@ -45,6 +45,36 @@ impl Graph {
         g
     }
 
+    // depth_exclude returns the depth of the graph when excluding the given
+    // set of nodes
+    pub fn depth_exclude(&self, set: &HashSet<usize>) -> usize {
+        self.parents
+            .iter()
+            .enumerate()
+            .fold(Vec::new(), |mut acc, (i, parents)| {
+                if set.contains(&i) {
+                    // an excluded node has length 0
+                    acc.push(0);
+                    return acc;
+                }
+                match parents
+                    .iter()
+                    // dont take parent's length if contained in set
+                    .filter(|&p| !set.contains(p))
+                    .map(|&p| acc[p] + 1)
+                    .max()
+                {
+                    // need the match because there might not be any values
+                    Some(depth) => acc.push(depth),
+                    None => acc.push(0),
+                }
+                acc
+            })
+            .into_iter()
+            .max()
+            .unwrap()
+    }
+
     // depth returns the longest depth found in the graph
     pub fn depth(&self) -> usize {
         self.parents
@@ -94,7 +124,7 @@ impl Graph {
     // It produces a degree-2 graph which is asymptotically depth-robust.
     fn bucket_sample(&mut self) {
         let mut rng = self.rng();
-        for node in 0..self.parents.len() {
+        for node in 0..self.parents.capacity() {
             let mut parents = Vec::new();
             match node {
                 // no parents for the first node
@@ -132,7 +162,7 @@ impl Graph {
     fn meta_bucket(&mut self, degree: usize) {
         let mut rng = self.rng();
         let m = degree - 1;
-        for node in 0..self.parents.len() {
+        for node in 0..self.parents.capacity() {
             let mut parents = Vec::with_capacity(degree);
             match node {
                 // no parents for the first node
@@ -285,6 +315,17 @@ pub mod tests {
 
         let p2 = vec![vec![], vec![], vec![0], vec![2], vec![2, 3], vec![3]];
         assert_eq!(graph_from(p2).depth(), 3);
+    }
+
+    #[test]
+    fn graph_depth_exclude() {
+        let p1 = vec![vec![], vec![0], vec![1], vec![2], vec![3]];
+        let g1 = graph_from(p1);
+        let s = HashSet::from_iter(vec![2]);
+        assert_eq!(g1.depth_exclude(&s), 1);
+
+        let g2 = Graph::new(17, TEST_SEED, DRGAlgo::MetaBucket(3));
+        let s = HashSet::from_iter(vec![2, 8, 15, 5, 10]);
     }
 
     pub fn graph_from(parents: Vec<Vec<usize>>) -> Graph {
