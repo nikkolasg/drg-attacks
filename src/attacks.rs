@@ -13,12 +13,38 @@ use crate::utils;
 //}
 //}
 
+struct GreedyParams {
+    // how many k nodes do we "remove" at each iteration in append_removal
+    k: usize,
+    // the radius for the heuristic to delete as well close nodes within a
+    // radius of a selected node.
+    radius: usize,
+    // maximum lenth of the path - heuristic for the table produced by count_paths
+    // see paragraph below equation 8.
+    // TODO: NOT (really) IMPLEMENTED YET - careful work is required
+    length: usize,
+}
 // greedy_reduce implements the Algorithm 5 of https://eprint.iacr.org/2018/944.pdf
-fn greedy_reduce(g: &Graph, target: usize) -> HashSet<usize> {
-    let s = HashSet::new();
-    //let nodes_radius: Vec<usize> = Vec::new();
-    let reduced = g.remove(&s);
-    while reduced.depth() > target {}
+fn greedy_reduce(g: &Graph, target: usize, p: GreedyParams) -> HashSet<usize> {
+    let mut s = HashSet::new();
+    let mut inradius: HashSet<usize> = HashSet::new();
+    let mut reduced = g.remove(&s);
+    println!("graph: {:?}", g);
+    let mut count = 0;
+    while reduced.depth() > target {
+        println!(" ---- new iteration ----");
+        let (counts, topk) = count_paths(g, &s, p.length, p.k);
+        append_removal(g, &mut s, &topk, &mut inradius, p.radius);
+        reduced = reduced.remove(&s);
+        println!("-> counts {:?}", counts);
+        println!("-> topk   {:?}", topk);
+        println!("-> s      {:?}", s);
+        println!("-> radius {:?}", inradius);
+        count += 1;
+        if count > 3 {
+            panic!("aie");
+        }
+    }
     s
 }
 
@@ -62,7 +88,8 @@ fn update_radius_set(g: &Graph, node: usize, inradius: &mut HashSet<usize>, radi
             .for_each(|&parent| closests.push(parent));
 
         // add all direct children
-        // TODO: compute once children graph and use it again as in C#
+        // TODO: compute once children graph and use it again as in C# instead
+        // of searching linearly
         g.parents()
             .iter()
             .enumerate()
@@ -102,7 +129,6 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize, k: usize) -> (Vec<u
     let mut starting_paths = Vec::new();
     // initializes the tables with 1 for nodes present in G - S
     g.parents().iter().enumerate().for_each(|(i, _)| {
-        // TODO slow checking in O(n) - consider changing to bitset of size n
         let mut length_vec = vec![0; length + 1];
         if s.contains(&i) {
             ending_paths.push(length_vec.clone());
@@ -116,12 +142,12 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize, k: usize) -> (Vec<u
     // counting phase of all starting/ending paths of all length
     for d in 1..=length {
         g.parents().iter().enumerate().for_each(|(i, parents)| {
-            // no need to check if included in S like in C# ref. code
-            // since everything is 0 and of the right size by default
-            //
             // checking each parents (vs only checking direct + 1parent in C#)
             ending_paths[i][d] = parents
                 .iter()
+                // no ending path for node i if the parent is contained in S
+                // since G - S doesn't have this parent
+                .filter(|p| !s.contains(p))
                 .fold(0, |acc, &parent| acc + ending_paths[parent][d - 1]);
 
             // difference vs the pseudo code: like in C#, increase parent count
@@ -137,6 +163,10 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize, k: usize) -> (Vec<u
 
     // counting how many incident paths of length d there is for each node
     let mut incidents = vec![0; g.cap()];
+    // counting the top k node wo have the greatest number of incident paths
+    // NOTE: difference with the C# that recomputes that vector separately.
+    // Since topk is directly correlated to incidents[], we can compute both
+    // at the same time and remove one O(n) iteration.
     let mut topk = vec![Pair(0, 0); k];
     for i in 0..g.cap() {
         for d in 0..=length {
@@ -144,10 +174,14 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize, k: usize) -> (Vec<u
         }
         let (idx, pair) = topk
             .iter()
+            .cloned()
             .enumerate()
             .min_by_key(|(_, pair)| pair.1)
             .unwrap();
-        if pair.0 < incidents[i] {
+
+        // replace if the minimum number of incident paths in topk is smaller
+        // than the one computed for node i in this iteration
+        if pair.1 < incidents[i] {
             topk[idx] = Pair(i, incidents[i]);
         }
     }
@@ -241,8 +275,6 @@ mod test {
             vec![4],
             vec![5, 4],
             vec![6],
-            // FIXME: Always have all immediate predecessors as parents
-            // by default to simplify manual construction.
         ];
         static ref GREEDY_PARENTS: Vec<Vec<usize>> = vec![
             vec![],
@@ -252,6 +284,19 @@ mod test {
             vec![3, 2, 0],
             vec![4],
         ];
+    }
+
+    #[test]
+    fn test_greedy() {
+        let graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
+        let params = GreedyParams {
+            k: 1,
+            radius: 0,
+            length: 2,
+        };
+        let s = greedy_reduce(&graph, 2, params);
+        assert_eq!(s, HashSet::from_iter(vec![3, 4]));
+        println!("{:?}", s);
     }
 
     #[test]
@@ -297,20 +342,25 @@ mod test {
         let graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
         let target_length = 2;
         // test with empty set to remove
-        let s = HashSet::new();
+        let mut s = HashSet::new();
         let k = 3;
         let (counts, topk) = count_paths(&graph, &s, target_length, k);
         assert_eq!(counts, vec![5, 5, 7, 6, 7, 3]);
         // order is irrelevant so we keep vec
         assert_eq!(topk, vec![Pair(3, 6), Pair(4, 7), Pair(2, 7)]);
-        // TODO test with a a non empty s
+        s.insert(4);
+        let (counts, topk) = count_paths(&graph, &s, target_length, k);
+        println!("counts {:?}", counts);
+        println!("topk: {:?}", topk);
+        assert_eq!(counts, vec![3, 3, 3, 3, 0, 0]);
+        assert_eq!(topk, vec![Pair(0, 3), Pair(1, 3), Pair(2, 3)]);
     }
 
     #[test]
     fn test_valiant_reduce() {
         let graph = graph::tests::graph_from(TEST_PARENTS.to_vec());
         let set = valiant_basic(&graph, 2);
-        assert_eq!(set, HashSet::from_iter(vec![0, 2, 3, 4, 6].iter().cloned()));
+        assert_eq!(set, HashSet::from_iter(vec![0, 2, 3, 4, 6]));
     }
 
     #[test]
@@ -325,28 +375,17 @@ mod test {
                 0 => {
                     assert_eq!(
                         edges,
-                        HashSet::from_iter(
-                            vec![Edge(0, 1), Edge(2, 3), Edge(4, 5), Edge(6, 7)]
-                                .iter()
-                                .cloned()
-                        )
+                        HashSet::from_iter(vec![Edge(0, 1), Edge(2, 3), Edge(4, 5), Edge(6, 7)])
                     );
                 }
                 1 => {
                     assert_eq!(
                         edges,
-                        HashSet::from_iter(
-                            vec![Edge(0, 2), Edge(1, 2), Edge(4, 6), Edge(5, 6)]
-                                .iter()
-                                .cloned()
-                        )
+                        HashSet::from_iter(vec![Edge(0, 2), Edge(1, 2), Edge(4, 6), Edge(5, 6)])
                     );
                 }
                 2 => {
-                    assert_eq!(
-                        edges,
-                        HashSet::from_iter(vec![Edge(2, 4), Edge(3, 4)].iter().cloned())
-                    );
+                    assert_eq!(edges, HashSet::from_iter(vec![Edge(2, 4), Edge(3, 4)]));
                 }
                 _ => {}
             });
