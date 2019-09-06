@@ -30,17 +30,11 @@ fn greedy_reduce(g: &Graph, target: usize, p: GreedyParams) -> HashSet<usize> {
     let mut s = HashSet::new();
     let mut inradius: HashSet<usize> = HashSet::new();
     let mut reduced = g.remove(&s);
-    println!("graph: {:?}", g);
-    let mut count = 0;
     while reduced.depth() > target {
         // TODO use p.length when more confidence in the trick
-        let (counts, topk) = count_paths(g, &s, target, p.k);
+        let (_, topk) = count_paths(g, &s, target, p.k);
         append_removal(g, &mut s, &topk, &mut inradius, p.radius);
         reduced = reduced.remove(&s);
-        count += 1;
-        if count > 3 {
-            panic!("aie");
-        }
     }
     s
 }
@@ -303,8 +297,26 @@ mod test {
             length: 2,
         };
         let s = greedy_reduce(&graph, 2, params);
-        //assert_eq!(s, HashSet::from_iter(vec![3, 4]));
-        println!("{:?}", s);
+        assert_eq!(s, HashSet::from_iter(vec![3, 2]));
+        let params = GreedyParams {
+            k: 1,
+            radius: 1,
+            length: 2,
+        };
+        let s = greedy_reduce(&graph, 2, params);
+        // 1st iteration : counts = [5, 5, 7, 6, 7, 3]
+        // 2nd iteration : counts =  [2, 2, 0, 3, 3, 2]
+        // so first index 2 then index 3 (takes the minimum in the list)
+        assert_eq!(s, HashSet::from_iter(vec![3, 2]));
+        let params = GreedyParams {
+            k: 2,
+            radius: 1,
+            length: 2,
+        };
+        let s = greedy_reduce(&graph, 2, params);
+        // since counts = [5, 5, 7, 6, 7, 3] at the first iteration
+        // and we can take two nodes, then 2 and 4 are selected
+        assert_eq!(s, HashSet::from_iter(vec![4, 2]));
     }
 
     #[test]
@@ -358,8 +370,6 @@ mod test {
         assert_eq!(topk, vec![Pair(3, 6), Pair(4, 7), Pair(2, 7)]);
         s.insert(4);
         let (counts, topk) = count_paths(&graph, &s, target_length, k);
-        println!("counts {:?}", counts);
-        println!("topk: {:?}", topk);
         assert_eq!(counts, vec![3, 3, 3, 3, 0, 0]);
         assert_eq!(topk, vec![Pair(0, 3), Pair(1, 3), Pair(2, 3)]);
     }
