@@ -10,27 +10,26 @@ use std::time::{Duration, Instant};
 #[macro_use]
 extern crate lazy_static;
 
+fn attack(g: &mut Graph, r: DepthReduceSet) {
+    println!("Attack with {:?}", r);
+    let start = Instant::now();
+    let set = depth_reduce(g, r);
+    let duration = start.elapsed();
+    println!("\t-> size {}", set.len());
+    println!("\t-> time elapsed: {:?}", duration);
+}
+
 fn main() {
     println!("DRG graph generation");
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
-    let size = (2 as usize).pow(20);
+    let size = (2 as usize).pow(10);
     let deg = 6;
-    let depth = (2 as usize).pow(8);
+    let depth = (2 as usize).pow(7);
     let mut g1 = Graph::new(size, random_bytes, DRGAlgo::MetaBucket(deg));
-    println!("Attack graph with valiant");
-    let start = Instant::now();
-    let valiant = depth_reduce(&mut g1, DepthReduceSet::Valiant(depth));
-    let duration = start.elapsed();
-    println!("\t-> valiant: size {}", valiant.len());
-    println!("\t-> time elapsed for valiant is: {:?}", duration);
+    attack(&mut g1, DepthReduceSet::Valiant(depth));
 
-    let start = Instant::now();
-    println!("Attack graph with greedy");
-    let greedy = depth_reduce(
+    attack(
         &mut g1,
-        DepthReduceSet::Greedy(5, GreedyParams { k: 3, radius: 2 }),
+        DepthReduceSet::Greedy(5, GreedyParams { k: 3, radius: 4 }),
     );
-    let duration = start.elapsed();
-    println!("\t-> time elapsed for greedy is: {:?}", duration);
-    println!("\t-> greedy:  size {}", greedy.len());
 }

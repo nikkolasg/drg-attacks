@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use crate::graph::Graph;
 use crate::utils;
 
+#[derive(Debug)]
 pub enum DepthReduceSet {
     // depth of the resulting G-S graph desired
     Valiant(usize),
@@ -19,6 +20,7 @@ pub fn depth_reduce(g: &mut Graph, drs: DepthReduceSet) -> HashSet<usize> {
 
 // GreedyParams holds the different parameters to choose for the greedy algorithm
 // such as the radius from which to delete nodes and the heuristic length.
+#[derive(Debug)]
 pub struct GreedyParams {
     // how many k nodes do we "remove" at each iteration in append_removal
     pub k: usize,
@@ -39,6 +41,7 @@ fn greedy_reduce(g: &mut Graph, target: usize, p: GreedyParams) -> HashSet<usize
     while g.depth_exclude(&s) > target {
         // TODO use p.length when more confidence in the trick
         let (_, topk) = count_paths(g, &s, target, p.k);
+        println!("depth {} -> topk {:?}", g.depth_exclude(&s), topk);
         append_removal(g, &mut s, &topk, &mut inradius, p.radius);
     }
     s
@@ -60,23 +63,23 @@ fn append_removal(
         return;
     }
 
-    let mut unseen = topk
-        .iter()
-        // take the nodes that are not yet in the inradius set
-        .filter(|&pair| !inradius.contains(&pair.0))
-        .collect::<Vec<&Pair>>();
-
+    let mut tops = topk.clone();
     // if all nodes are already in the radius set, then at least take
     // the first one.
     // https://github.com/filecoin-project/drg-attacks/issues/2
     // for more details.
-    if unseen.len() == 0 {
-        unseen.push(&topk[0]);
+    if let Some(node) = tops.pop() {
+        set.insert(node.0);
+        update_radius_set(g, node.0, inradius, radius);
     }
-
-    for &pair in unseen.iter() {
-        set.insert(pair.0);
-        update_radius_set(g, pair.0, inradius, radius);
+    while let Some(node) = tops.pop() {
+        if inradius.contains(&node.0) {
+            // difference with previous insertion is that we only include
+            // nodes NOT in the radius set
+            continue;
+        }
+        set.insert(node.0);
+        update_radius_set(g, node.0, inradius, radius);
     }
 }
 
@@ -293,8 +296,10 @@ mod test {
         let params = GreedyParams { k: 2, radius: 1 };
         let s = greedy_reduce(&mut graph, 2, params);
         // since counts = [5, 5, 7, 6, 7, 3] at the first iteration
-        // and we can take two nodes, then 2 and 4 are selected
-        assert_eq!(s, HashSet::from_iter(vec![4, 2]));
+        // and we can take two nodes:
+        // node 4 is chosen first, and 2 3 and 5 go into inradius
+        // so only node 1 is left
+        assert_eq!(s, HashSet::from_iter(vec![4, 1]));
     }
 
     #[test]
@@ -316,11 +321,12 @@ mod test {
         append_removal(&graph, &mut s, &topk, &mut inradius, radius);
         // 2,3,4,5 because
         // (1) node 2 was inserted at the previous call (prev. line)
-        // (2) then the next top 3 are node 1 3 4
-        assert_eq!(s, HashSet::from_iter(vec![2, 1, 4, 3]));
-        // the whole graph because the neighbors of the set S(2,3,4,5)
-        // with a radius of 1 contains 0 and 1 (thanks to node 2)
-        assert_eq!(inradius, HashSet::from_iter((0..6).collect::<Vec<usize>>()));
+        // (2) then the next is 3 - 4 and 1 are not included since in radius
+        assert_eq!(s, HashSet::from_iter(vec![2, 3]));
+        // the neighbors of the set S(2,3)
+        // with a radius of 1 contains 1 and 4
+        let exp: Vec<usize> = vec![1, 2, 3, 4];
+        assert_eq!(inradius, HashSet::from_iter(exp));
         // TODO probably more tests with larger graph
     }
 
