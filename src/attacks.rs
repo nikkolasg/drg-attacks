@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use crate::graph::Edge;
 use crate::graph::Graph;
 use crate::utils;
 
@@ -278,18 +279,13 @@ fn valiant_reduce_main(g: &Graph, f: &Fn(&HashSet<usize>) -> bool) -> HashSet<us
         let partition = find_next();
         // add the origin node for each edges in the chosen partition
         s.extend(partition.iter().fold(Vec::new(), |mut acc, edge| {
-            acc.push(edge.0);
+            acc.push(edge.parent);
             acc
         }));
     }
 
     return s;
 }
-
-// Edge holds the origin and endpoint of an edge.
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-struct Edge(usize, usize);
-// FIXME: Move outside of this module.
 
 // valiant_partitions returns the sets E_i and S_i from the given graph
 // according to the definition algorithm 8 from
@@ -301,14 +297,13 @@ fn valiant_partitions(g: &Graph) -> Vec<HashSet<Edge>> {
         eis.push(HashSet::new());
     }
 
-    for (v, parents) in g.parents().iter().enumerate() {
-        for &u in parents.iter() {
-            let bit = utils::msbd(u, v);
-            assert!(bit < bs);
-            // edge j -> i differs at the nth bit
-            (&mut eis[bit]).insert(Edge(u, v));
-        }
-    }
+    g.for_each_edge(|edge| {
+        let bit = utils::msbd(edge);
+        debug_assert!(bit < bs);
+        // edge j -> i differs at the nth bit
+        eis[bit].insert(edge.clone());
+    });
+
     eis
 }
 
@@ -467,17 +462,17 @@ mod test {
                 0 => {
                     assert_eq!(
                         edges,
-                        HashSet::from_iter(vec![Edge(0, 1), Edge(2, 3), Edge(4, 5), Edge(6, 7)])
+                        HashSet::from_iter(vec![Edge::new(0, 1), Edge::new(2, 3), Edge::new(4, 5), Edge::new(6, 7)])
                     );
                 }
                 1 => {
                     assert_eq!(
                         edges,
-                        HashSet::from_iter(vec![Edge(0, 2), Edge(1, 2), Edge(4, 6), Edge(5, 6)])
+                        HashSet::from_iter(vec![Edge::new(0, 2), Edge::new(1, 2), Edge::new(4, 6), Edge::new(5, 6)])
                     );
                 }
                 2 => {
-                    assert_eq!(edges, HashSet::from_iter(vec![Edge(2, 4), Edge(3, 4)]));
+                    assert_eq!(edges, HashSet::from_iter(vec![Edge::new(2, 4), Edge::new(3, 4)]));
                 }
                 _ => {}
             });

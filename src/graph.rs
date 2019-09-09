@@ -15,13 +15,35 @@ pub struct Graph {
     // The capacity of the graph is the size of the vector - Some nodes may be
     // absent when counted, i.e. node i may not have any parent and may not be
     // the parent of any other node. In that case, it is not included in the graph G
-    parents: Vec<Vec<usize>>,
+    parents: Vec<Vec<Node>>,
+    // FIXME: Use slices, after construction this doesn't change.
+
     seed: [u8; 32],
     algo: DRGAlgo,
     // children holds all the children relationships of all nodes.
     // If j = children[i][u] for any u, then there is an edge (i -> j).
     // NOTE: it is NOT computed by default, only when calling children_project()
     children: Vec<Vec<usize>>,
+}
+
+pub type Node = usize;
+
+/// An edge represented as a parent-child relation (an expansion of the short
+/// `(u,v)` notation used in the paper).
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub struct Edge {
+    pub parent: Node,
+    pub child: Node,
+}
+
+impl Edge {
+    pub fn new(parent: Node, child: Node) -> Edge {
+        debug_assert!(parent < child);
+        Edge {
+            parent,
+            child,
+        }
+    }
 }
 
 // DRGAlgo represents which algorithm can be used to create the edges so a Graph is
@@ -246,9 +268,22 @@ impl Graph {
         ChaCha20Rng::from_seed(self.seed)
     }
 
-    pub fn parents(&self) -> &Vec<Vec<usize>> {
+    pub fn parents(&self) -> &Vec<Vec<Node>> {
         &self.parents
     }
+    // FIXME: Remove this, at much return the parents of a single
+    // node but do not allow complete access to the inner structure.
+
+    pub fn for_each_edge<F>(&self, mut func: F)
+    where F: FnMut(&Edge) -> () {
+        for (child, all_parents) in self.parents().iter().enumerate() {
+            for &parent in all_parents.iter() {
+                func(&Edge::new(parent, child));
+                // FIXME: PERF: Maybe don't construct a new edge in every call.
+            }
+        }
+    }
+    // FIXME: Add an internal parent/edge iterator.
 
     pub fn cap(&self) -> usize {
         self.parents.len()
@@ -387,7 +422,7 @@ pub mod tests {
         assert_eq!(g3.depth(), depthex);
     }
 
-    pub fn graph_from(parents: Vec<Vec<usize>>) -> Graph {
+    pub fn graph_from(parents: Vec<Vec<Node>>) -> Graph {
         Graph {
             parents: parents,
             seed: TEST_SEED,
