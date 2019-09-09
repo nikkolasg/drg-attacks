@@ -30,10 +30,23 @@ some potential nodes. Example:
    ... 
 ```
 
+UPDATE: the DRSample algorithm in https://acmccs.github.io/papers/p1001-alwenA.pdf 
+uses `log2().floor() + 1` to AVOID that scenario. Implementation is now following 
+that algorithm.
+
+### unproportionate chances
+
+see: https://github.com/filecoin-project/research/issues/136
+It happens within my implementation and exhibits strongly with 1000 nodes
+already.
+```
+add_direct node 0: at most 0 parents and 771 children
+```
+means the first has 771 children !
 
 ## Greedy Attacks
 
 + Should we reset the `inradius` set after one iteration of the loop or not ?
 + SHould we *always* add the first node of the "top k" ? or only if all of them
-  are in the radius, then only then, we add the first one ? Why not a random one
-  ?
+    are in the radius, then only then, we add the first one ? Why not a random one
+

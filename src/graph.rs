@@ -188,13 +188,21 @@ impl Graph {
                         // meta_idx represents a meta node in the meta graph
                         // each node is represented m times, so we always take the
                         // first node index to not fall on the same final index
+                        // graphically, it looks like
+                        // [ [node 0, ..., node 0, node 1 ... node 1, etc]
+                        // with each "bucket" of node having length
                         let meta_idx = node * m;
-                        let max_bucket = (meta_idx as f32).log2().floor() as usize;
-                        // choose bucket index {1 ... log2(idx)}
+                        // ceil instead of floor() + 1
+                        let max_bucket = (meta_idx as f32).log2().ceil() as usize;
+                        // choose bucket index {1 ... ceil(log2(idx))}
                         let i: usize = rng.gen_range(1, max_bucket + 1);
                         // choose parent in range [2^(i-1), 2^i[
                         let min = 1 << (i - 1);
-                        let max = 1 << i;
+                        // min to avoid choosing a node which is higher than
+                        // the meta_idx - can happen since we can choose one
+                        // in the same bucket!
+                        let max = std::cmp::min(meta_idx, 1 << i);
+                        assert!(max <= meta_idx);
                         let meta_parent = rng.gen_range(min, max);
                         let real_parent = meta_parent / degree;
                         assert!(meta_parent < meta_idx);
