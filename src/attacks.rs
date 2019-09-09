@@ -32,20 +32,33 @@ pub struct GreedyParams {
     // see paragraph below equation 8.
     // TODO: NOT (really) IMPLEMENTED YET - careful work is required
     // pub length: usize,
+    // test field to look at the impact of reseting the inradius set between
+    // iterations or not.
+    pub reset: bool,
 }
 // greedy_reduce implements the Algorithm 5 of https://eprint.iacr.org/2018/944.pdf
 fn greedy_reduce(g: &mut Graph, target: usize, p: GreedyParams) -> HashSet<usize> {
     let mut s = HashSet::new();
     g.children_project();
+    let mut inradius: HashSet<usize> = HashSet::new();
     while g.depth_exclude(&s) > target {
         // TODO use p.length when more confidence in the trick
         let (counts, topk) = count_paths(g, &s, target, p.k);
-        println!(
-            "main loop: depth {}\n\t-> counts {:?}",
-            g.depth_exclude(&s),
-            counts
-        );
-        append_removal(g, &mut s, &topk, p.radius);
+        /*println!(*/
+        //"main loop: depth {} > {}\n\t-> counts {:?}",
+        //g.depth_exclude(&s),
+        //target,
+        //counts
+        /*);*/
+        append_removal(g, &mut s, &mut inradius, &topk, p.radius);
+        // TODO
+        // 1. Find what should be the normal behavior: clearing or continue
+        // updating the inradius set
+        // 2. In the latter case, optimization to not re-allocate each time
+        // since could be quite big with large k and radius
+        if p.reset {
+            inradius.clear();
+        }
     }
     s
 }
@@ -53,16 +66,19 @@ fn greedy_reduce(g: &mut Graph, target: usize, p: GreedyParams) -> HashSet<usize
 // append_removal is an adaptation of "SelectRemovalNodes" function in Algorithm 6
 // of https://eprint.iacr.org/2018/944.pdf. Instead of returning the set of nodes
 // to remove, it simply adds them to the given set.
-fn append_removal(g: &Graph, set: &mut HashSet<usize>, topk: &Vec<Pair>, radius: usize) {
+fn append_removal(
+    g: &Graph,
+    set: &mut HashSet<usize>,
+    inradius: &mut HashSet<usize>,
+    topk: &Vec<Pair>,
+    radius: usize,
+) {
     if radius == 0 {
         // take the node with the highest number of incident path
         set.insert(topk.iter().max_by_key(|pair| pair.1).unwrap().0);
         return;
     }
 
-    // TODO optimization to not re-allocate each time since could be quite big with
-    // large k and radius
-    let mut inradius: HashSet<usize> = HashSet::new();
     let mut count = 0;
     for node in topk.iter() {
         if inradius.contains(&node.0) {
@@ -71,7 +87,7 @@ fn append_removal(g: &Graph, set: &mut HashSet<usize>, topk: &Vec<Pair>, radius:
             continue;
         }
         set.insert(node.0);
-        update_radius_set(g, node.0, &mut inradius, radius);
+        update_radius_set(g, node.0, inradius, radius);
         count += 1;
         println!(
             "\t-> iteration {} : node {} inserted -> inradius {:?}",
@@ -83,7 +99,7 @@ fn append_removal(g: &Graph, set: &mut HashSet<usize>, topk: &Vec<Pair>, radius:
     if count == 0 {
         let node = &topk.iter().max_by_key(|n| n.1).unwrap();
         set.insert(node.0);
-        update_radius_set(g, node.0, &mut inradius, radius);
+        update_radius_set(g, node.0, inradius, radius);
     }
 
     println!("\t-> topk {:?}", topk);
@@ -298,26 +314,42 @@ mod test {
     fn test_greedy() {
         let mut graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
         graph.children_project();
-        let params = GreedyParams { k: 1, radius: 0 };
+        let params = GreedyParams {
+            k: 1,
+            radius: 0,
+            reset: false,
+        };
         let s = greedy_reduce(&mut graph, 2, params);
         assert_eq!(s, HashSet::from_iter(vec![3, 2]));
-        let params = GreedyParams { k: 1, radius: 1 };
+        let params = GreedyParams {
+            k: 1,
+            radius: 1,
+            reset: false,
+        };
         let s = greedy_reduce(&mut graph, 2, params);
         // 1st iteration : counts = [5, 5, 7, 6, 7, 3]
         // 2nd iteration : counts =  [2, 2, 0, 3, 3, 2]
         // so first index 2 then index 3 (takes the minimum in the list)
         assert_eq!(s, HashSet::from_iter(vec![3, 2]));
         println!("\n\n\n ------\n\n\n");
-        let params = GreedyParams { k: 2, radius: 1 };
+        let params = GreedyParams {
+            k: 2,
+            radius: 1,
+            reset: false,
+        };
         let s = greedy_reduce(&mut graph, 2, params);
-        // since counts = [5, 5, 7, 6, 7, 3] at the first iteration
-        // and we can take two nodes:
-        // node 2 is chosen first, so radius = {0,1,2,3,4}
-        // then counts = [2, 2, 0, 3, 3, 2]
-        // so top is 3 and 4. Node 3 gets inserted by "force"
-        // using the rule that if all nodes are in the radius, we at least
-        // add the first one.
-        assert_eq!(s, HashSet::from_iter(vec![2, 3]));
+        // main loop: depth 5 > 2
+        //         -> counts [5, 5, 7, 6, 7, 3]
+        //         -> iteration 1 : node 2 inserted -> inradius {2, 0, 1, 3, 4}
+        //         -> topk [Pair(2, 7), Pair(4, 7)]
+        //         -> added 1 nodes in S: {2}
+        // main loop: depth 4 > 2
+        //         -> counts [2, 2, 0, 3, 3, 2]
+        //         -> topk [Pair(3, 3), Pair(4, 3)]
+        //         -> added 1 nodes in S: {4, 2} <-- thanks to the rule
+        //         when all nodes are in the radius, we take the highest one
+        //         and max_by_key returns the latest.
+        assert_eq!(s, HashSet::from_iter(vec![2, 4]));
     }
 
     #[test]
@@ -329,13 +361,14 @@ mod test {
         let target_length = 2;
         let (_, topk) = count_paths(&graph, &s, target_length, k);
         let radius = 0;
-        append_removal(&graph, &mut s, &topk, radius);
+        let mut inradius = HashSet::new();
+        append_removal(&graph, &mut s, &mut inradius, &topk, radius);
         assert!(s.contains(&2)); // 4 is valid but (2,7) is last
 
         let radius = 1;
         let (counts, topk) = count_paths(&graph, &s, target_length, k);
         println!("counts {:?}", counts);
-        append_removal(&graph, &mut s, &topk, radius);
+        append_removal(&graph, &mut s, &mut inradius, &topk, radius);
         // counts [2, 2, 0, 3, 3, 2]
         // -> topk [Pair(4, 3), Pair(1, 2), Pair(3, 3)]
         // -> iteration 1 : node 4 inserted -> inradius {5, 0, 3, 2, 4}

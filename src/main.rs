@@ -31,7 +31,14 @@ fn large_graphs() {
 
     attack(
         &mut g1,
-        DepthReduceSet::Greedy(5, GreedyParams { k: 10, radius: 8 }),
+        DepthReduceSet::Greedy(
+            depth,
+            GreedyParams {
+                k: 30,
+                radius: 5,
+                reset: false,
+            },
+        ),
     );
 }
 
@@ -40,18 +47,25 @@ fn small_graph() {
     println!("DRG graph generation");
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
     let size = 100;
-    let deg = 3;
+    let deg = 4;
     let depth = 50;
     let mut g1 = Graph::new(size, random_bytes, DRGAlgo::MetaBucket(deg));
     attack(&mut g1, DepthReduceSet::Valiant(depth));
 
     attack(
         &mut g1,
-        DepthReduceSet::Greedy(5, GreedyParams { k: 10, radius: 4 }),
+        DepthReduceSet::Greedy(
+            depth,
+            GreedyParams {
+                k: 1,
+                radius: 0,
+                reset: false,
+            },
+        ),
     );
 }
 
 fn main() {
-    //large_graphs();
     small_graph();
+    //large_graphs();
 }
