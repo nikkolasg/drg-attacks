@@ -43,7 +43,7 @@ fn greedy_reduce(g: &mut Graph, target: usize, p: GreedyParams) -> HashSet<usize
     let mut inradius: HashSet<usize> = HashSet::new();
     while g.depth_exclude(&s) > target {
         // TODO use p.length when more confidence in the trick
-        let (counts, topk) = count_paths(g, &s, target, p.k);
+        let (_, topk) = count_paths(g, &s, target, p.k);
         /*println!(*/
         //"main loop: depth {} > {}\n\t-> counts {:?}",
         //g.depth_exclude(&s),
