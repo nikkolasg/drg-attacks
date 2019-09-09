@@ -18,6 +18,8 @@ pub struct Graph {
     parents: Vec<Vec<Node>>,
     // FIXME: Use slices, after construction this doesn't change.
 
+    size: usize,
+
     seed: [u8; 32],
     algo: DRGAlgo,
     // children holds all the children relationships of all nodes.
@@ -64,6 +66,7 @@ impl Graph {
             algo,
             seed,
             parents: Vec::with_capacity(size),
+            size,
             children: vec![],
         };
         match g.algo {
@@ -71,6 +74,12 @@ impl Graph {
             DRGAlgo::MetaBucket(degree) => g.meta_bucket(degree),
         }
         g
+    }
+
+    /// Number of nodes in the graph.
+    // FIXME: Standardize size usage, don't access length or capacity of inner structures.
+    pub fn size(&self) -> usize {
+        self.size
     }
 
     // depth_exclude returns the depth of the graph when excluding the given
@@ -141,6 +150,7 @@ impl Graph {
         }
 
         Graph {
+            size: (&out).len(),
             parents: out,
             algo: self.algo,
             seed: self.seed,
@@ -424,6 +434,7 @@ pub mod tests {
 
     pub fn graph_from(parents: Vec<Vec<Node>>) -> Graph {
         Graph {
+            size: (&parents).len(),
             parents: parents,
             seed: TEST_SEED,
             algo: DRGAlgo::BucketSample,

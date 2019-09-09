@@ -180,30 +180,29 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize, k: usize) -> (Vec<u
     let mut ending_paths = vec![vec![0; length + 1]; g.cap()];
     let mut starting_paths = vec![vec![0; length + 1]; g.cap()];
     // counting phase of all starting/ending paths of all length
-    for d in 1..=length {
-        g.parents().iter().enumerate().for_each(|(i, parents)| {
-            if !s.contains(&i) {
-                // initializes the tables with 1 for nodes present in G - S
-                ending_paths[i][0] = 1;
-                starting_paths[i][0] = 1;
-            }
-            // checking each parents (vs only checking direct + 1parent in C#)
-            ending_paths[i][d] = parents
-                .iter()
-                // no ending path for node i if the parent is contained in S
-                // since G - S doesn't have this parent
-                .filter(|p| !s.contains(p))
-                .fold(0, |acc, &parent| acc + ending_paths[parent][d - 1]);
 
-            // difference vs the pseudo code: like in C#, increase parent count
-            // instead of iterating over children of node i
-            parents.iter().for_each(|&parent| {
-                if s.contains(&parent) {
-                    return;
-                }
-                starting_paths[parent][d] += starting_paths[i][d - 1];
-            });
+    for node in 0..g.size() {
+            if !s.contains(&node) {
+                // initializes the tables with 1 for nodes present in G - S
+                ending_paths[node][0] = 1;
+                starting_paths[node][0] = 1;
+            }
+    }
+
+    for d in 1..=length {
+        g.for_each_edge(|e| {
+            // checking each parents (vs only checking direct + 1parent in C#)
+            // no ending path for node i if the parent is contained in S
+            // since G - S doesn't have this parent
+            if !s.contains(&e.parent) {
+                ending_paths[e.child][d] += ending_paths[e.parent][d - 1];
+
+                // difference vs the pseudo code: like in C#, increase parent count
+                // instead of iterating over children of node i
+                starting_paths[e.parent][d] += starting_paths[e.child][d - 1];
+            }
         });
+        // FIXME: Review if all the comments inside are still valid.
     }
 
     // counting how many incident paths of length d there is for each node
