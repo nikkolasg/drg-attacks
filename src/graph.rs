@@ -243,7 +243,7 @@ pub mod tests {
     fn graph_new() {
         let size = 100;
         let g1 = Graph::new(size, TEST_SEED, DRGAlgo::BucketSample);
-        assert_eq!(g1.parents.len(), 0); // no nodes generated yet
+        assert_eq!(g1.parents.len(), 100); // no nodes generated yet
         assert_eq!(g1.parents.capacity(), size);
     }
 
@@ -251,6 +251,9 @@ pub mod tests {
     fn graph_bucket_sample() {
         let g1 = Graph::new(10, TEST_SEED, DRGAlgo::BucketSample);
         g1.parents.iter().enumerate().for_each(|(i, parents)| {
+            if i == 0 {
+                return;
+            }
             // test there's at least a parent
             assert!(parents.len() >= 1 && parents.len() <= 2);
             // test there's at least the direct parent
@@ -268,6 +271,9 @@ pub mod tests {
         let degree = 3;
         let g1 = Graph::new(10, TEST_SEED, DRGAlgo::MetaBucket(3));
         g1.parents.iter().enumerate().for_each(|(i, parents)| {
+            if i == 0 {
+                return;
+            }
             // test there's at least a parent
             assert!(parents.len() >= 1 && parents.len() <= degree);
             // test there's at least the direct parent
@@ -275,10 +281,11 @@ pub mod tests {
             assert!(parents.iter().find(|x| **x == i - 1).is_some());
             // test all the other parents are less
             if parents.len() > 1 {
+                println!("node {}: parents {:?}", i, parents);
                 assert_eq!(
                     parents
                         .iter()
-                        .filter(|x| **x < i)
+                        .filter(|x| **x < (i - 1))
                         .collect::<Vec<&usize>>()
                         .len(),
                     parents.len() - 1
@@ -324,8 +331,9 @@ pub mod tests {
         let s = HashSet::from_iter(vec![2]);
         assert_eq!(g1.depth_exclude(&s), 1);
 
-        //let g2 = Graph::new(17, TEST_SEED, DRGAlgo::MetaBucket(3));
-        //let s = HashSet::from_iter(vec![2, 8, 15, 5, 10]);
+        let g2 = Graph::new(17, TEST_SEED, DRGAlgo::MetaBucket(3));
+        let s = HashSet::from_iter(vec![2, 8, 15, 5, 10]);
+        assert!(g2.depth_exclude(&s) < (g2.cap() - s.len()));
     }
 
     pub fn graph_from(parents: Vec<Vec<usize>>) -> Graph {
