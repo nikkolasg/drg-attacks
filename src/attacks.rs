@@ -36,13 +36,16 @@ pub struct GreedyParams {
 // greedy_reduce implements the Algorithm 5 of https://eprint.iacr.org/2018/944.pdf
 fn greedy_reduce(g: &mut Graph, target: usize, p: GreedyParams) -> HashSet<usize> {
     let mut s = HashSet::new();
-    let mut inradius: HashSet<usize> = HashSet::new();
     g.children_project();
     while g.depth_exclude(&s) > target {
         // TODO use p.length when more confidence in the trick
-        let (_, topk) = count_paths(g, &s, target, p.k);
-        println!("depth {} -> topk {:?}", g.depth_exclude(&s), topk);
-        append_removal(g, &mut s, &topk, &mut inradius, p.radius);
+        let (counts, topk) = count_paths(g, &s, target, p.k);
+        println!(
+            "main loop: depth {}\n\t-> counts {:?}",
+            g.depth_exclude(&s),
+            counts
+        );
+        append_removal(g, &mut s, &topk, p.radius);
     }
     s
 }
@@ -50,37 +53,41 @@ fn greedy_reduce(g: &mut Graph, target: usize, p: GreedyParams) -> HashSet<usize
 // append_removal is an adaptation of "SelectRemovalNodes" function in Algorithm 6
 // of https://eprint.iacr.org/2018/944.pdf. Instead of returning the set of nodes
 // to remove, it simply adds them to the given set.
-fn append_removal(
-    g: &Graph,
-    set: &mut HashSet<usize>,
-    topk: &Vec<Pair>,
-    inradius: &mut HashSet<usize>,
-    radius: usize,
-) {
+fn append_removal(g: &Graph, set: &mut HashSet<usize>, topk: &Vec<Pair>, radius: usize) {
     if radius == 0 {
         // take the node with the highest number of incident path
         set.insert(topk.iter().max_by_key(|pair| pair.1).unwrap().0);
         return;
     }
 
-    let mut tops = topk.clone();
-    // if all nodes are already in the radius set, then at least take
-    // the first one.
-    // https://github.com/filecoin-project/drg-attacks/issues/2
-    // for more details.
-    if let Some(node) = tops.pop() {
-        set.insert(node.0);
-        update_radius_set(g, node.0, inradius, radius);
-    }
-    while let Some(node) = tops.pop() {
+    // TODO optimization to not re-allocate each time since could be quite big with
+    // large k and radius
+    let mut inradius: HashSet<usize> = HashSet::new();
+    let mut count = 0;
+    for node in topk.iter() {
         if inradius.contains(&node.0) {
             // difference with previous insertion is that we only include
             // nodes NOT in the radius set
             continue;
         }
         set.insert(node.0);
-        update_radius_set(g, node.0, inradius, radius);
+        update_radius_set(g, node.0, &mut inradius, radius);
+        count += 1;
+        println!(
+            "\t-> iteration {} : node {} inserted -> inradius {:?}",
+            count, node.0, inradius,
+        );
     }
+    // if all nodes are already in the radius set, then take the
+    // the one with the maximum incident paths.
+    if count == 0 {
+        let node = &topk.iter().max_by_key(|n| n.1).unwrap();
+        set.insert(node.0);
+        update_radius_set(g, node.0, &mut inradius, radius);
+    }
+
+    println!("\t-> topk {:?}", topk);
+    println!("\t-> added {} nodes in S: {:?}", count, set);
 }
 
 // update_radius_set fills the given inradius set with nodes that inside a radius
@@ -88,15 +95,22 @@ fn append_removal(
 // under-specified function "UpdateNodesInRadius" in algo. 6 of
 // https://eprint.iacr.org/2018/944.pdf
 fn update_radius_set(g: &Graph, node: usize, inradius: &mut HashSet<usize>, radius: usize) {
-    let add_direct_nodes = |v: usize, closests: &mut Vec<usize>| {
+    let add_direct_nodes = |v: usize, closests: &mut Vec<usize>, _: &HashSet<usize>| {
         // add all direct parent
         g.parents()[v]
             .iter()
+            // no need to continue searching with that parent since it's
+            // already in the radius, i.e. it already has been searched
+            // FIXME see if it works and resolves any potential loops
+            //.filter(|&parent| !rad.contains(parent))
             .for_each(|&parent| closests.push(parent));
 
         // add all direct children
         g.children()[v]
             .iter()
+            // no need to continue searching with that parent since it's
+            // already in the radius, i.e. it already has been searched
+            //.filter(|&child| !rad.contains(child))
             .for_each(|&child| closests.push(child));
     };
     // insert first the given node and then add the close nodes
@@ -107,7 +121,7 @@ fn update_radius_set(g: &Graph, node: usize, inradius: &mut HashSet<usize>, radi
         let mut closests = Vec::new();
         // grab all direct nodes of those already in radius "i"
         for &v in tosearch.iter() {
-            add_direct_nodes(v, &mut closests);
+            add_direct_nodes(v, &mut closests, inradius);
         }
         tosearch = closests.clone();
         inradius.extend(closests);
@@ -293,13 +307,17 @@ mod test {
         // 2nd iteration : counts =  [2, 2, 0, 3, 3, 2]
         // so first index 2 then index 3 (takes the minimum in the list)
         assert_eq!(s, HashSet::from_iter(vec![3, 2]));
+        println!("\n\n\n ------\n\n\n");
         let params = GreedyParams { k: 2, radius: 1 };
         let s = greedy_reduce(&mut graph, 2, params);
         // since counts = [5, 5, 7, 6, 7, 3] at the first iteration
         // and we can take two nodes:
-        // node 4 is chosen first, and 2 3 and 5 go into inradius
-        // so only node 1 is left
-        assert_eq!(s, HashSet::from_iter(vec![4, 1]));
+        // node 2 is chosen first, so radius = {0,1,2,3,4}
+        // then counts = [2, 2, 0, 3, 3, 2]
+        // so top is 3 and 4. Node 3 gets inserted by "force"
+        // using the rule that if all nodes are in the radius, we at least
+        // add the first one.
+        assert_eq!(s, HashSet::from_iter(vec![2, 3]));
     }
 
     #[test]
@@ -307,26 +325,23 @@ mod test {
         let mut graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
         graph.children_project();
         let mut s = HashSet::new();
-        let mut inradius = HashSet::new();
         let k = 3;
         let target_length = 2;
         let (_, topk) = count_paths(&graph, &s, target_length, k);
         let radius = 0;
-        append_removal(&graph, &mut s, &topk, &mut inradius, radius);
+        append_removal(&graph, &mut s, &topk, radius);
         assert!(s.contains(&2)); // 4 is valid but (2,7) is last
-        assert_eq!(inradius.len(), 0);
 
         let radius = 1;
-        let (_, topk) = count_paths(&graph, &s, target_length, k);
-        append_removal(&graph, &mut s, &topk, &mut inradius, radius);
-        // 2,3,4,5 because
-        // (1) node 2 was inserted at the previous call (prev. line)
-        // (2) then the next is 3 - 4 and 1 are not included since in radius
-        assert_eq!(s, HashSet::from_iter(vec![2, 3]));
-        // the neighbors of the set S(2,3)
-        // with a radius of 1 contains 1 and 4
-        let exp: Vec<usize> = vec![1, 2, 3, 4];
-        assert_eq!(inradius, HashSet::from_iter(exp));
+        let (counts, topk) = count_paths(&graph, &s, target_length, k);
+        println!("counts {:?}", counts);
+        append_removal(&graph, &mut s, &topk, radius);
+        // counts [2, 2, 0, 3, 3, 2]
+        // -> topk [Pair(4, 3), Pair(1, 2), Pair(3, 3)]
+        // -> iteration 1 : node 4 inserted -> inradius {5, 0, 3, 2, 4}
+        // -> iteration 2 : node 1 inserted -> inradius {5, 0, 1, 3, 2, 4}
+        // 2 is there from the previous call to append_removal
+        assert_eq!(s, HashSet::from_iter(vec![2, 4, 1]));
         // TODO probably more tests with larger graph
     }
 

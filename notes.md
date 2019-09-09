@@ -30,3 +30,10 @@ some potential nodes. Example:
    ... 
 ```
 
+
+## Greedy Attacks
+
++ Should we reset the `inradius` set after one iteration of the loop or not ?
++ SHould we *always* add the first node of the "top k" ? or only if all of them
+  are in the radius, then only then, we add the first one ? Why not a random one
+  ?

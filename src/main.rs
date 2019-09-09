@@ -4,7 +4,7 @@ mod utils;
 use attacks::{depth_reduce, DepthReduceSet, GreedyParams};
 use graph::{DRGAlgo, Graph};
 use rand::Rng;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 // used by test module...
 #[macro_use]
@@ -19,7 +19,8 @@ fn attack(g: &mut Graph, r: DepthReduceSet) {
     println!("\t-> time elapsed: {:?}", duration);
 }
 
-fn main() {
+fn large_graphs() {
+    println!("Large graph scenario");
     println!("DRG graph generation");
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
     let size = (2 as usize).pow(10);
@@ -30,6 +31,27 @@ fn main() {
 
     attack(
         &mut g1,
-        DepthReduceSet::Greedy(5, GreedyParams { k: 3, radius: 4 }),
+        DepthReduceSet::Greedy(5, GreedyParams { k: 10, radius: 8 }),
     );
+}
+
+fn small_graph() {
+    println!("Large graph scenario");
+    println!("DRG graph generation");
+    let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
+    let size = 100;
+    let deg = 3;
+    let depth = 50;
+    let mut g1 = Graph::new(size, random_bytes, DRGAlgo::MetaBucket(deg));
+    attack(&mut g1, DepthReduceSet::Valiant(depth));
+
+    attack(
+        &mut g1,
+        DepthReduceSet::Greedy(5, GreedyParams { k: 10, radius: 4 }),
+    );
+}
+
+fn main() {
+    //large_graphs();
+    small_graph();
 }
