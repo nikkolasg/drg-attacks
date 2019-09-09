@@ -10,7 +10,7 @@ pub enum DepthReduceSet {
     Greedy(usize, GreedyParams),
 }
 
-pub fn depth_reduce(g: &Graph, drs: DepthReduceSet) -> HashSet<usize> {
+pub fn depth_reduce(g: &mut Graph, drs: DepthReduceSet) -> HashSet<usize> {
     match drs {
         DepthReduceSet::Valiant(target) => valiant_reduce(g, target),
         DepthReduceSet::Greedy(target, p) => greedy_reduce(g, target, p),
@@ -32,9 +32,10 @@ pub struct GreedyParams {
     // pub length: usize,
 }
 // greedy_reduce implements the Algorithm 5 of https://eprint.iacr.org/2018/944.pdf
-fn greedy_reduce(g: &Graph, target: usize, p: GreedyParams) -> HashSet<usize> {
+fn greedy_reduce(g: &mut Graph, target: usize, p: GreedyParams) -> HashSet<usize> {
     let mut s = HashSet::new();
     let mut inradius: HashSet<usize> = HashSet::new();
+    g.children_project();
     while g.depth_exclude(&s) > target {
         // TODO use p.length when more confidence in the trick
         let (_, topk) = count_paths(g, &s, target, p.k);
@@ -91,16 +92,9 @@ fn update_radius_set(g: &Graph, node: usize, inradius: &mut HashSet<usize>, radi
             .for_each(|&parent| closests.push(parent));
 
         // add all direct children
-        // TODO: compute once children graph and use it again as in C# instead
-        // of searching linearly
-        g.parents()
+        g.children()[v]
             .iter()
-            .enumerate()
-            // if node i has v as parent then it's good
-            .filter(|&(_, parents)| parents.contains(&v))
-            .for_each(|(i, _)| {
-                closests.push(i);
-            });
+            .for_each(|&child| closests.push(child));
     };
     // insert first the given node and then add the close nodes
     inradius.insert(node);
@@ -285,18 +279,19 @@ mod test {
 
     #[test]
     fn test_greedy() {
-        let graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
+        let mut graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
+        graph.children_project();
         let params = GreedyParams { k: 1, radius: 0 };
-        let s = greedy_reduce(&graph, 2, params);
+        let s = greedy_reduce(&mut graph, 2, params);
         assert_eq!(s, HashSet::from_iter(vec![3, 2]));
         let params = GreedyParams { k: 1, radius: 1 };
-        let s = greedy_reduce(&graph, 2, params);
+        let s = greedy_reduce(&mut graph, 2, params);
         // 1st iteration : counts = [5, 5, 7, 6, 7, 3]
         // 2nd iteration : counts =  [2, 2, 0, 3, 3, 2]
         // so first index 2 then index 3 (takes the minimum in the list)
         assert_eq!(s, HashSet::from_iter(vec![3, 2]));
         let params = GreedyParams { k: 2, radius: 1 };
-        let s = greedy_reduce(&graph, 2, params);
+        let s = greedy_reduce(&mut graph, 2, params);
         // since counts = [5, 5, 7, 6, 7, 3] at the first iteration
         // and we can take two nodes, then 2 and 4 are selected
         assert_eq!(s, HashSet::from_iter(vec![4, 2]));
@@ -304,7 +299,8 @@ mod test {
 
     #[test]
     fn test_append_removal_node() {
-        let graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
+        let mut graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
+        graph.children_project();
         let mut s = HashSet::new();
         let mut inradius = HashSet::new();
         let k = 3;
@@ -330,7 +326,8 @@ mod test {
 
     #[test]
     fn test_update_radius() {
-        let graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
+        let mut graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
+        graph.children_project();
         let node = 2;
         let mut inradius = HashSet::new();
 

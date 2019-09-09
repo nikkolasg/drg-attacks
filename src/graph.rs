@@ -9,14 +9,19 @@ use std::fmt;
 // of graph that has a *proper* labelling: for each edge (i,j), we have i < j.
 #[derive(Debug)]
 pub struct Graph {
-    // parents holds all parents of all nodes. If j = parents[i][u], then there
-    // is an edge (j -> i), i.e. j is the parent of i.
+    // parents holds all parents relationships of all nodes.
+    // If j = parents[i][u] (for any u), then there is an edge (j -> i),
+    // i.e. j is the parent of i.
     // The capacity of the graph is the size of the vector - Some nodes may be
     // absent when counted, i.e. node i may not have any parent and may not be
     // the parent of any other node. In that case, it is not included in the graph G
     parents: Vec<Vec<usize>>,
     seed: [u8; 32],
     algo: DRGAlgo,
+    // children holds all the children relationships of all nodes.
+    // If j = children[i][u] for any u, then there is an edge (i -> j).
+    // NOTE: it is NOT computed by default, only when calling children_project()
+    children: Vec<Vec<usize>>,
 }
 
 // DRGAlgo represents which algorithm can be used to create the edges so a Graph is
@@ -37,6 +42,7 @@ impl Graph {
             algo,
             seed,
             parents: Vec::with_capacity(size),
+            children: vec![],
         };
         match g.algo {
             DRGAlgo::BucketSample => g.bucket_sample(),
@@ -116,6 +122,7 @@ impl Graph {
             parents: out,
             algo: self.algo,
             seed: self.seed,
+            children: vec![],
         }
     }
 
@@ -202,6 +209,31 @@ impl Graph {
         }
     }
 
+    // children_project returns the children edges denoted by this graph
+    // instead of using the parent relationship.
+    // If j = array[i][u] (for any u), then there is an edge (i -> j) in the graph.
+    // Useful for the greedy attacks for example.
+    pub fn children_project(&mut self) -> &Vec<Vec<usize>> {
+        // compute only once
+        if self.children.len() == 0 {
+            let mut children = vec![vec![]; self.cap()];
+            for (node, parents) in self.parents.iter().enumerate() {
+                for &parent in parents.iter() {
+                    children[parent].push(node);
+                }
+            }
+            self.children = children;
+        }
+        return &self.children;
+    }
+
+    pub fn children(&self) -> &Vec<Vec<usize>> {
+        if self.children.len() == 0 {
+            panic!("called children() without children_project() first");
+        }
+        return &self.children;
+    }
+
     fn rng(&self) -> ChaCha20Rng {
         ChaCha20Rng::from_seed(self.seed)
     }
@@ -281,7 +313,6 @@ pub mod tests {
             assert!(parents.iter().find(|x| **x == i - 1).is_some());
             // test all the other parents are less
             if parents.len() > 1 {
-                println!("node {}: parents {:?}", i, parents);
                 assert_eq!(
                     parents
                         .iter()
@@ -295,6 +326,19 @@ pub mod tests {
     }
 
     #[test]
+    fn graph_children_project() {
+        // graph 1 - 5 nodes
+        // 0 -> 1, 1 -> 2, 2 -> 3, 3 -> 4
+        // 0 -> 2, 2 -> 4
+        let p1 = vec![vec![], vec![0], vec![0, 1], vec![2], vec![2, 3]];
+        let mut g1 = graph_from(p1);
+
+        let children = g1.children_project();
+        let exp = vec![vec![1, 2], vec![2], vec![3, 4], vec![4], vec![]];
+        assert_eq!(children, &exp);
+    }
+
+    #[test]
     fn graph_remove() {
         // graph 1 - 5 nodes
         // 0 -> 1, 1 -> 2, 2 -> 3, 3 -> 4
@@ -302,11 +346,7 @@ pub mod tests {
         // Remove nodes 1 and 3
         // -> final graph 0 -> 2, 2 -> 4
         let p1 = vec![vec![], vec![0], vec![0, 1], vec![2], vec![2, 3]];
-        let g1 = Graph {
-            parents: p1,
-            seed: TEST_SEED,
-            algo: DRGAlgo::BucketSample,
-        };
+        let g1 = graph_from(p1);
 
         let nodes = HashSet::from_iter(vec![1, 3].iter().cloned());
         let g3 = g1.remove(&nodes);
@@ -341,6 +381,7 @@ pub mod tests {
             parents: parents,
             seed: TEST_SEED,
             algo: DRGAlgo::BucketSample,
+            children: vec![],
         }
     }
 }
