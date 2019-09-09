@@ -128,23 +128,16 @@ struct Pair(usize, usize);
 //      The number of incident path is not given.
 fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize, k: usize) -> (Vec<usize>, Vec<Pair>) {
     // dimensions are [n][depth]
-    let mut ending_paths = Vec::new();
-    let mut starting_paths = Vec::new();
-    // initializes the tables with 1 for nodes present in G - S
-    g.parents().iter().enumerate().for_each(|(i, _)| {
-        let mut length_vec = vec![0; length + 1];
-        if s.contains(&i) {
-            ending_paths.push(length_vec.clone());
-            starting_paths.push(length_vec);
-        } else {
-            length_vec[0] = 1;
-            ending_paths.push(length_vec.clone());
-            starting_paths.push(length_vec);
-        }
-    });
+    let mut ending_paths = vec![vec![0; length + 1]; g.cap()];
+    let mut starting_paths = vec![vec![0; length + 1]; g.cap()];
     // counting phase of all starting/ending paths of all length
     for d in 1..=length {
         g.parents().iter().enumerate().for_each(|(i, parents)| {
+            if !s.contains(&i) {
+                // initializes the tables with 1 for nodes present in G - S
+                ending_paths[i][0] = 1;
+                starting_paths[i][0] = 1;
+            }
             // checking each parents (vs only checking direct + 1parent in C#)
             ending_paths[i][d] = parents
                 .iter()

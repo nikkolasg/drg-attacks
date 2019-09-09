@@ -4,6 +4,7 @@ mod utils;
 use attacks::{depth_reduce, DepthReduceSet, GreedyParams};
 use graph::{DRGAlgo, Graph};
 use rand::Rng;
+use std::time::{Duration, Instant};
 
 // used by test module...
 #[macro_use]
@@ -17,12 +18,19 @@ fn main() {
     let depth = (2 as usize).pow(8);
     let g1 = Graph::new(size, random_bytes, DRGAlgo::MetaBucket(deg));
     println!("Attack graph with valiant");
+    let start = Instant::now();
     let valiant = depth_reduce(&g1, DepthReduceSet::Valiant(depth));
+    let duration = start.elapsed();
+    println!("\t-> valiant: size {}", valiant.len());
+    println!("\t-> time elapsed for valiant is: {:?}", duration);
+
+    let start = Instant::now();
     println!("Attack graph with greedy");
     let greedy = depth_reduce(
         &g1,
         DepthReduceSet::Greedy(5, GreedyParams { k: 3, radius: 2 }),
     );
-    println!("valiant: size {}", valiant.len());
-    println!("greedy:  size {}", greedy.len());
+    let duration = start.elapsed();
+    println!("\t-> time elapsed for greedy is: {:?}", duration);
+    println!("\t-> greedy:  size {}", greedy.len());
 }

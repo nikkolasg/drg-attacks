@@ -324,8 +324,8 @@ pub mod tests {
         let s = HashSet::from_iter(vec![2]);
         assert_eq!(g1.depth_exclude(&s), 1);
 
-        let g2 = Graph::new(17, TEST_SEED, DRGAlgo::MetaBucket(3));
-        let s = HashSet::from_iter(vec![2, 8, 15, 5, 10]);
+        //let g2 = Graph::new(17, TEST_SEED, DRGAlgo::MetaBucket(3));
+        //let s = HashSet::from_iter(vec![2, 8, 15, 5, 10]);
     }
 
     pub fn graph_from(parents: Vec<Vec<usize>>) -> Graph {
