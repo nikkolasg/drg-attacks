@@ -15,8 +15,29 @@ fn attack(g: &mut Graph, r: DepthReduceSet) {
     let start = Instant::now();
     let set = depth_reduce(g, r);
     let duration = start.elapsed();
+    let depth = g.depth_exclude(&set);
     println!("\t-> size {}", set.len());
+    println!("\t-> depth(G-S) {}", depth);
     println!("\t-> time elapsed: {:?}", duration);
+}
+
+fn porep_comparison() {
+    println!("Comparison with porep short paper with n = 2^20");
+    let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
+    let size = (2 as usize).pow(20);
+    let deg = 6;
+    let mut g1 = Graph::new(size, random_bytes, DRGAlgo::MetaBucket(deg));
+
+    let depth = (0.25 * (size as f32)) as usize;
+    println!("Trial #1 with target depth = 0.25n = {}", depth);
+    attack(&mut g1, DepthReduceSet::ValiantDepth(depth));
+    // example 1
+    // Attack with Valiant(4194304)
+    //    -> size 5936
+    //    -> time elapsed: 409.995829453s
+    let set_size = 314572; // 0.30 * 2^20
+    println!("Trial #2 with target size set = 0.30n = {}", set_size);
+    attack(&mut g1, DepthReduceSet::ValiantSize(set_size));
 }
 
 fn large_graphs() {
@@ -27,7 +48,7 @@ fn large_graphs() {
     let deg = 6;
     let depth = (2 as usize).pow(7);
     let mut g1 = Graph::new(size, random_bytes, DRGAlgo::MetaBucket(deg));
-    attack(&mut g1, DepthReduceSet::Valiant(depth));
+    attack(&mut g1, DepthReduceSet::ValiantDepth(depth));
 
     attack(
         &mut g1,
@@ -50,7 +71,7 @@ fn small_graph() {
     let deg = 4;
     let depth = 50;
     let mut g1 = Graph::new(size, random_bytes, DRGAlgo::MetaBucket(deg));
-    attack(&mut g1, DepthReduceSet::Valiant(depth));
+    attack(&mut g1, DepthReduceSet::ValiantDepth(depth));
 
     attack(
         &mut g1,
@@ -66,6 +87,7 @@ fn small_graph() {
 }
 
 fn main() {
-    small_graph();
+    //small_graph();
     //large_graphs();
+    porep_comparison();
 }
