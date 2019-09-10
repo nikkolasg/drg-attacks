@@ -6,14 +6,17 @@ use crate::utils;
 #[derive(Debug)]
 pub enum DepthReduceSet {
     // depth of the resulting G-S graph desired
-    Valiant(usize),
+    ValiantDepth(usize),
+    // size of the resulting S desired
+    ValiantSize(usize),
     // depth of the resulting G-S graph and some specific parameters
     Greedy(usize, GreedyParams),
 }
 
 pub fn depth_reduce(g: &mut Graph, drs: DepthReduceSet) -> HashSet<usize> {
     match drs {
-        DepthReduceSet::Valiant(target) => valiant_reduce(g, target),
+        DepthReduceSet::ValiantDepth(_) => valiant_reduce(g, drs),
+        DepthReduceSet::ValiantSize(_) => valiant_reduce(g, drs),
         DepthReduceSet::Greedy(target, p) => greedy_reduce(g, target, p),
     }
 }
@@ -43,13 +46,14 @@ fn greedy_reduce(g: &mut Graph, target: usize, p: GreedyParams) -> HashSet<usize
     let mut inradius: HashSet<usize> = HashSet::new();
     while g.depth_exclude(&s) > target {
         // TODO use p.length when more confidence in the trick
-        let (_, topk) = count_paths(g, &s, target, p.k);
-        /*println!(*/
-        //"main loop: depth {} > {}\n\t-> counts {:?}",
-        //g.depth_exclude(&s),
-        //target,
-        //counts
-        /*);*/
+        //let (_, topk) = count_paths(g, &s, target, p.k);
+        let (counts, topk) = count_paths(g, &s, target, p.k);
+        println!(
+            "main loop: depth {} > {}\n\t-> counts.len {:?}",
+            g.depth_exclude(&s),
+            target,
+            counts.len(),
+        );
         append_removal(g, &mut s, &mut inradius, &topk, p.radius);
         // TODO
         // 1. Find what should be the normal behavior: clearing or continue
@@ -111,7 +115,7 @@ fn append_removal(
 // under-specified function "UpdateNodesInRadius" in algo. 6 of
 // https://eprint.iacr.org/2018/944.pdf
 fn update_radius_set(g: &Graph, node: usize, inradius: &mut HashSet<usize>, radius: usize) {
-    let add_direct_nodes = |v: usize, closests: &mut Vec<usize>, _: &HashSet<usize>| {
+    let add_direct_nodes = |v: usize, closests: &mut HashSet<usize>, _: &HashSet<usize>| {
         // add all direct parent
         g.parents()[v]
             .iter()
@@ -119,7 +123,9 @@ fn update_radius_set(g: &Graph, node: usize, inradius: &mut HashSet<usize>, radi
             // already in the radius, i.e. it already has been searched
             // FIXME see if it works and resolves any potential loops
             //.filter(|&parent| !rad.contains(parent))
-            .for_each(|&parent| closests.push(parent));
+            .for_each(|&parent| {
+                closests.insert(parent);
+            });
 
         // add all direct children
         g.children()[v]
@@ -127,20 +133,35 @@ fn update_radius_set(g: &Graph, node: usize, inradius: &mut HashSet<usize>, radi
             // no need to continue searching with that parent since it's
             // already in the radius, i.e. it already has been searched
             //.filter(|&child| !rad.contains(child))
-            .for_each(|&child| closests.push(child));
+            .for_each(|&child| {
+                closests.insert(child);
+            });
+        println!(
+            "\t add_direct node {}: at most {} parents and {} children",
+            v,
+            g.parents()[v].len(),
+            g.children()[v].len()
+        );
     };
     // insert first the given node and then add the close nodes
     inradius.insert(node);
-    let mut tosearch = vec![node];
+    let mut tosearch = HashSet::new();
+    tosearch.insert(node);
     // do it recursively "radius" times
-    for _ in 0..radius {
-        let mut closests = Vec::new();
+    for i in 0..radius {
+        let mut closests = HashSet::new();
         // grab all direct nodes of those already in radius "i"
         for &v in tosearch.iter() {
             add_direct_nodes(v, &mut closests, inradius);
         }
         tosearch = closests.clone();
         inradius.extend(closests);
+        println!(
+            "update radius {}: {} new nodes, total {}",
+            i,
+            tosearch.len(),
+            inradius.len()
+        );
     }
 }
 
@@ -214,9 +235,21 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize, k: usize) -> (Vec<u
     (incidents, topk)
 }
 
-// valiant_reduce returns a set S such that depth(G - S) < target.
-// It implements the algo 8 in the https://eprint.iacr.org/2018/944.pdf paper.
-fn valiant_reduce(g: &Graph, target: usize) -> HashSet<usize> {
+fn valiant_reduce(g: &Graph, d: DepthReduceSet) -> HashSet<usize> {
+    match d {
+        // valiant_reduce returns a set S such that depth(G - S) < target.
+        // It implements the algo 8 in the https://eprint.iacr.org/2018/944.pdf paper.
+        DepthReduceSet::ValiantDepth(depth) => {
+            valiant_reduce_main(g, &|set: &HashSet<usize>| g.depth_exclude(set) > depth)
+        }
+        DepthReduceSet::ValiantSize(size) => {
+            valiant_reduce_main(g, &|set: &HashSet<usize>| set.len() < size)
+        }
+        _ => panic!("that should not happen"),
+    }
+}
+
+fn valiant_reduce_main(g: &Graph, f: &Fn(&HashSet<usize>) -> bool) -> HashSet<usize> {
     let partitions = valiant_partitions(g);
     // TODO replace by a simple bitset or boolean vec
     let mut chosen: Vec<usize> = Vec::new();
@@ -241,7 +274,7 @@ fn valiant_reduce(g: &Graph, target: usize) -> HashSet<usize> {
             None => panic!("no more partitions to use"),
         }
     };
-    while g.depth_exclude(&s) > target {
+    while f(&s) {
         let partition = find_next();
         // add the origin node for each edges in the chosen partition
         s.extend(partition.iter().fold(Vec::new(), |mut acc, edge| {
@@ -409,9 +442,16 @@ mod test {
     }
 
     #[test]
-    fn test_valiant_reduce() {
+    fn test_valiant_reduce_depth() {
         let graph = graph::tests::graph_from(TEST_PARENTS.to_vec());
-        let set = valiant_reduce(&graph, 2);
+        let set = valiant_reduce(&graph, DepthReduceSet::ValiantDepth(2));
+        assert_eq!(set, HashSet::from_iter(vec![0, 2, 3, 4, 6]));
+    }
+
+    #[test]
+    fn test_valiant_reduce_size() {
+        let graph = graph::tests::graph_from(TEST_PARENTS.to_vec());
+        let set = valiant_reduce(&graph, DepthReduceSet::ValiantSize(3));
         assert_eq!(set, HashSet::from_iter(vec![0, 2, 3, 4, 6]));
     }
 
