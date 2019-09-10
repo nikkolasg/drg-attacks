@@ -381,7 +381,10 @@ pub mod tests {
 
         let g2 = Graph::new(17, TEST_SEED, DRGAlgo::MetaBucket(3));
         let s = HashSet::from_iter(vec![2, 8, 15, 5, 10]);
-        assert!(g2.depth_exclude(&s) < (g2.cap() - s.len()));
+        let depthex = g2.depth_exclude(&s);
+        assert!(depthex < (g2.cap() - s.len()));
+        let g3 = g2.remove(&s);
+        assert_eq!(g3.depth(), depthex);
     }
 
     pub fn graph_from(parents: Vec<Vec<usize>>) -> Graph {
