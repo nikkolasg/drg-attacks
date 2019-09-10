@@ -9,14 +9,19 @@ use std::fmt;
 // of graph that has a *proper* labelling: for each edge (i,j), we have i < j.
 #[derive(Debug)]
 pub struct Graph {
-    // parents holds all parents of all nodes. If j = parents[i][u], then there
-    // is an edge (j -> i), i.e. j is the parent of i.
+    // parents holds all parents relationships of all nodes.
+    // If j = parents[i][u] (for any u), then there is an edge (j -> i),
+    // i.e. j is the parent of i.
     // The capacity of the graph is the size of the vector - Some nodes may be
     // absent when counted, i.e. node i may not have any parent and may not be
     // the parent of any other node. In that case, it is not included in the graph G
     parents: Vec<Vec<usize>>,
     seed: [u8; 32],
     algo: DRGAlgo,
+    // children holds all the children relationships of all nodes.
+    // If j = children[i][u] for any u, then there is an edge (i -> j).
+    // NOTE: it is NOT computed by default, only when calling children_project()
+    children: Vec<Vec<usize>>,
 }
 
 // DRGAlgo represents which algorithm can be used to create the edges so a Graph is
@@ -37,12 +42,43 @@ impl Graph {
             algo,
             seed,
             parents: Vec::with_capacity(size),
+            children: vec![],
         };
         match g.algo {
             DRGAlgo::BucketSample => g.bucket_sample(),
             DRGAlgo::MetaBucket(degree) => g.meta_bucket(degree),
         }
         g
+    }
+
+    // depth_exclude returns the depth of the graph when excluding the given
+    // set of nodes
+    pub fn depth_exclude(&self, set: &HashSet<usize>) -> usize {
+        self.parents
+            .iter()
+            .enumerate()
+            .fold(Vec::new(), |mut acc, (i, parents)| {
+                if set.contains(&i) {
+                    // an excluded node has length 0
+                    acc.push(0);
+                    return acc;
+                }
+                match parents
+                    .iter()
+                    // dont take parent's length if contained in set
+                    .filter(|&p| !set.contains(p))
+                    .map(|&p| acc[p] + 1)
+                    .max()
+                {
+                    // need the match because there might not be any values
+                    Some(depth) => acc.push(depth),
+                    None => acc.push(0),
+                }
+                acc
+            })
+            .into_iter()
+            .max()
+            .unwrap()
     }
 
     // depth returns the longest depth found in the graph
@@ -63,8 +99,8 @@ impl Graph {
     }
 
     // remove returns a new graph with the specified nodes removed
-    // TODO inefficient at the moment; may be faster ways.
-    pub fn remove(&self, nodes: &Vec<usize>) -> Graph {
+    // TODO slow path checking in O(n) - consider using bitset for nodes
+    pub fn remove(&self, nodes: &HashSet<usize>) -> Graph {
         let mut out = Vec::with_capacity(self.parents.len());
         for i in 0..self.parents.len() {
             let parents = self.parents.get(i).unwrap();
@@ -86,6 +122,7 @@ impl Graph {
             parents: out,
             algo: self.algo,
             seed: self.seed,
+            children: vec![],
         }
     }
 
@@ -94,7 +131,7 @@ impl Graph {
     // It produces a degree-2 graph which is asymptotically depth-robust.
     fn bucket_sample(&mut self) {
         let mut rng = self.rng();
-        for node in 0..self.parents.len() {
+        for node in 0..self.parents.capacity() {
             let mut parents = Vec::new();
             match node {
                 // no parents for the first node
@@ -132,7 +169,7 @@ impl Graph {
     fn meta_bucket(&mut self, degree: usize) {
         let mut rng = self.rng();
         let m = degree - 1;
-        for node in 0..self.parents.len() {
+        for node in 0..self.parents.capacity() {
             let mut parents = Vec::with_capacity(degree);
             match node {
                 // no parents for the first node
@@ -151,13 +188,21 @@ impl Graph {
                         // meta_idx represents a meta node in the meta graph
                         // each node is represented m times, so we always take the
                         // first node index to not fall on the same final index
+                        // graphically, it looks like
+                        // [ [node 0, ..., node 0, node 1 ... node 1, etc]
+                        // with each "bucket" of node having length
                         let meta_idx = node * m;
-                        let max_bucket = (meta_idx as f32).log2().floor() as usize;
-                        // choose bucket index {1 ... log2(idx)}
+                        // ceil instead of floor() + 1
+                        let max_bucket = (meta_idx as f32).log2().ceil() as usize;
+                        // choose bucket index {1 ... ceil(log2(idx))}
                         let i: usize = rng.gen_range(1, max_bucket + 1);
                         // choose parent in range [2^(i-1), 2^i[
                         let min = 1 << (i - 1);
-                        let max = 1 << i;
+                        // min to avoid choosing a node which is higher than
+                        // the meta_idx - can happen since we can choose one
+                        // in the same bucket!
+                        let max = std::cmp::min(meta_idx, 1 << i);
+                        assert!(max <= meta_idx);
                         let meta_parent = rng.gen_range(min, max);
                         let real_parent = meta_parent / degree;
                         assert!(meta_parent < meta_idx);
@@ -172,12 +217,41 @@ impl Graph {
         }
     }
 
+    // children_project returns the children edges denoted by this graph
+    // instead of using the parent relationship.
+    // If j = array[i][u] (for any u), then there is an edge (i -> j) in the graph.
+    // Useful for the greedy attacks for example.
+    pub fn children_project(&mut self) -> &Vec<Vec<usize>> {
+        // compute only once
+        if self.children.len() == 0 {
+            let mut children = vec![vec![]; self.cap()];
+            for (node, parents) in self.parents.iter().enumerate() {
+                for &parent in parents.iter() {
+                    children[parent].push(node);
+                }
+            }
+            self.children = children;
+        }
+        return &self.children;
+    }
+
+    pub fn children(&self) -> &Vec<Vec<usize>> {
+        if self.children.len() == 0 {
+            panic!("called children() without children_project() first");
+        }
+        return &self.children;
+    }
+
     fn rng(&self) -> ChaCha20Rng {
         ChaCha20Rng::from_seed(self.seed)
     }
 
     pub fn parents(&self) -> &Vec<Vec<usize>> {
         &self.parents
+    }
+
+    pub fn cap(&self) -> usize {
+        self.parents.len()
     }
 }
 
@@ -201,6 +275,7 @@ fn remove_duplicate<T: Hash + Eq>(elements: &mut Vec<T>) {
 pub mod tests {
 
     use super::*;
+    use std::iter::FromIterator;
 
     static TEST_SEED: [u8; 32] = [1; 32];
 
@@ -208,7 +283,7 @@ pub mod tests {
     fn graph_new() {
         let size = 100;
         let g1 = Graph::new(size, TEST_SEED, DRGAlgo::BucketSample);
-        assert_eq!(g1.parents.len(), 0); // no nodes generated yet
+        assert_eq!(g1.parents.len(), 100); // no nodes generated yet
         assert_eq!(g1.parents.capacity(), size);
     }
 
@@ -216,6 +291,9 @@ pub mod tests {
     fn graph_bucket_sample() {
         let g1 = Graph::new(10, TEST_SEED, DRGAlgo::BucketSample);
         g1.parents.iter().enumerate().for_each(|(i, parents)| {
+            if i == 0 {
+                return;
+            }
             // test there's at least a parent
             assert!(parents.len() >= 1 && parents.len() <= 2);
             // test there's at least the direct parent
@@ -233,6 +311,9 @@ pub mod tests {
         let degree = 3;
         let g1 = Graph::new(10, TEST_SEED, DRGAlgo::MetaBucket(3));
         g1.parents.iter().enumerate().for_each(|(i, parents)| {
+            if i == 0 {
+                return;
+            }
             // test there's at least a parent
             assert!(parents.len() >= 1 && parents.len() <= degree);
             // test there's at least the direct parent
@@ -243,13 +324,26 @@ pub mod tests {
                 assert_eq!(
                     parents
                         .iter()
-                        .filter(|x| **x < i)
+                        .filter(|x| **x < (i - 1))
                         .collect::<Vec<&usize>>()
                         .len(),
                     parents.len() - 1
                 );
             }
         });
+    }
+
+    #[test]
+    fn graph_children_project() {
+        // graph 1 - 5 nodes
+        // 0 -> 1, 1 -> 2, 2 -> 3, 3 -> 4
+        // 0 -> 2, 2 -> 4
+        let p1 = vec![vec![], vec![0], vec![0, 1], vec![2], vec![2, 3]];
+        let mut g1 = graph_from(p1);
+
+        let children = g1.children_project();
+        let exp = vec![vec![1, 2], vec![2], vec![3, 4], vec![4], vec![]];
+        assert_eq!(children, &exp);
     }
 
     #[test]
@@ -260,13 +354,9 @@ pub mod tests {
         // Remove nodes 1 and 3
         // -> final graph 0 -> 2, 2 -> 4
         let p1 = vec![vec![], vec![0], vec![0, 1], vec![2], vec![2, 3]];
-        let g1 = Graph {
-            parents: p1,
-            seed: TEST_SEED,
-            algo: DRGAlgo::BucketSample,
-        };
+        let g1 = graph_from(p1);
 
-        let nodes = vec![1, 3];
+        let nodes = HashSet::from_iter(vec![1, 3].iter().cloned());
         let g3 = g1.remove(&nodes);
         let expected = vec![vec![], vec![], vec![0], vec![], vec![2]];
         assert_eq!(g3.parents.len(), 5);
@@ -282,11 +372,27 @@ pub mod tests {
         assert_eq!(graph_from(p2).depth(), 3);
     }
 
+    #[test]
+    fn graph_depth_exclude() {
+        let p1 = vec![vec![], vec![0], vec![1], vec![2], vec![3]];
+        let g1 = graph_from(p1);
+        let s = HashSet::from_iter(vec![2]);
+        assert_eq!(g1.depth_exclude(&s), 1);
+
+        let g2 = Graph::new(17, TEST_SEED, DRGAlgo::MetaBucket(3));
+        let s = HashSet::from_iter(vec![2, 8, 15, 5, 10]);
+        let depthex = g2.depth_exclude(&s);
+        assert!(depthex < (g2.cap() - s.len()));
+        let g3 = g2.remove(&s);
+        assert_eq!(g3.depth(), depthex);
+    }
+
     pub fn graph_from(parents: Vec<Vec<usize>>) -> Graph {
         Graph {
             parents: parents,
             seed: TEST_SEED,
             algo: DRGAlgo::BucketSample,
+            children: vec![],
         }
     }
 }
