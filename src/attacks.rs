@@ -224,35 +224,27 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize, k: usize) -> (Vec<u
 
     // counting how many incident paths of length d there is for each node
     let mut incidents = Vec::with_capacity(g.size());
-    let mut topk = vec![Pair(0, 0); k];
     // counting the top k node wo have the greatest number of incident paths
     // NOTE: difference with the C# that recomputes that vector separately.
     // Since topk is directly correlated to incidents[], we can compute both
     // at the same time and remove one O(n) iteration.
     g.for_each_node(|&node| {
-        let node_idx = incidents.len();
-        let count = (0..=length)
-            .map(|d| starting_paths[node][d] * ending_paths[node][length - d])
-            .sum();
-        incidents.push(count);
-
-        // find the smaller element in top k
-        let (idx, pair) = topk
-            .iter()
-            .cloned()
-            .enumerate()
-            .min_by_key(|(_, pair)| pair.1)
-            .unwrap();
-
-        // replace if the minimum number of incident paths in topk is smaller
-        // than the one computed for node i in this iteration
-        if pair.1 < count {
-            topk[idx] = Pair(node_idx, count);
-            //println!("topk {:?}", topk);
-        }
+        incidents.push(Pair(node, (0..=length).map(|d| {
+            starting_paths[node][d] * ending_paths[node][length - d]
+        }).sum()));
     });
-    topk.sort_by_key(|p| Reverse(p.1));
-    (incidents, topk)
+
+    let incidents_return = incidents.iter().map(|pair| {pair.1}).collect();
+    incidents.sort_by_key(|pair| pair.1);
+    incidents.reverse();
+    let topk: Vec<Pair> = incidents[..k].to_vec();
+    // FIXME: Just to accommodate the current API convet `topk`
+    // from a tuple to a `Pair` (although this is too generic and
+    // doesn't add much value, if we want to keep it we should rework
+    // it to make it clear that the first element is a node and the
+    // second one is some sort of metric attached to it).
+
+    (incidents_return, topk)
 }
 
 /// Implements the algorithm described in the Lemma 6.2 of the [AB16
@@ -419,6 +411,8 @@ mod test {
         ];
     }
 
+    // FIXME: Update test description with new standardize order of `topk`
+    // in `count_paths`.
     #[test]
     fn test_greedy() {
         let mut graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
@@ -430,7 +424,7 @@ mod test {
             reset: false,
         };
         let s = greedy_reduce(&mut graph, 2, params);
-        assert_eq!(s, HashSet::from_iter(vec![3, 2]));
+        assert_eq!(s, HashSet::from_iter(vec![3, 4]));
         let params = GreedyParams {
             k: 1,
             radius: 1,
@@ -441,7 +435,7 @@ mod test {
         // 1st iteration : counts = [5, 5, 7, 6, 7, 3]
         // 2nd iteration : counts =  [2, 2, 0, 3, 3, 2]
         // so first index 2 then index 3 (takes the minimum in the list)
-        assert_eq!(s, HashSet::from_iter(vec![3, 2]));
+        assert_eq!(s, HashSet::from_iter(vec![3, 4]));
         println!("\n\n\n ------\n\n\n");
         let params = GreedyParams {
             k: 2,
@@ -464,6 +458,8 @@ mod test {
         assert_eq!(s, HashSet::from_iter(vec![2, 4]));
     }
 
+    // FIXME: Update test description with new standardize order of `topk`
+    // in `count_paths`.
     #[test]
     fn test_append_removal_node() {
         let mut graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
@@ -486,7 +482,7 @@ mod test {
         // -> iteration 1 : node 4 inserted -> inradius {5, 0, 3, 2, 4}
         // -> iteration 2 : node 1 inserted -> inradius {5, 0, 1, 3, 2, 4}
         // 2 is there from the previous call to append_removal
-        assert_eq!(s, HashSet::from_iter(vec![1, 2, 4]));
+        assert_eq!(s, HashSet::from_iter(vec![2, 4]));
         // TODO probably more tests with larger graph
     }
 
@@ -512,11 +508,12 @@ mod test {
         let k = 3;
         let (counts, topk) = count_paths(&graph, &s, target_length, k);
         assert_eq!(counts, vec![5, 5, 7, 6, 7, 3]);
+        // order is irrelevant so we keep vec
         assert_eq!(topk, vec![Pair(4, 7), Pair(2, 7), Pair(3, 6)]);
         s.insert(4);
         let (counts, topk) = count_paths(&graph, &s, target_length, k);
         assert_eq!(counts, vec![3, 3, 3, 3, 0, 0]);
-        assert_eq!(topk, vec![Pair(0, 3), Pair(1, 3), Pair(2, 3)]);
+        assert_eq!(topk, vec![Pair(3, 3), Pair(2, 3), Pair(1, 3)]);
     }
 
     #[test]

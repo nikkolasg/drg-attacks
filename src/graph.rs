@@ -415,9 +415,7 @@ impl Graph {
     // FIXME: Extend `F` definition to be able to return information (useful
     // to form new vectors from the original set of nodes).
     pub fn for_each_node<F>(&self, mut func: F)
-    where
-        F: FnMut(&Node) -> (),
-    {
+    where F: FnMut(&Node) -> () {
         for node in 0..self.size() {
             func(&node);
         }
