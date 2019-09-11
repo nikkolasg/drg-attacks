@@ -44,6 +44,10 @@ add_direct node 0: at most 0 parents and 771 children
 ```
 means the first has 771 children !
 
+### Bucket Sample porep vs CCS vs code
+
+For the bucket sample algorithm, so far the code does a mix: it compute the random bucket and random index like the DRSample algo in the CCS paper (which is DIFFERENT than the regular algo in the porep paper), but uses the same general structure as the porep paper algorithm BucketSample.
+
 ## Greedy Attacks
 
 + Should we reset the `inradius` set after one iteration of the loop or not ?
