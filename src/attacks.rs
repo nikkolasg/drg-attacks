@@ -1,5 +1,7 @@
+use std::cmp::Reverse;
 use std::collections::HashSet;
 
+use crate::graph::Edge;
 use crate::graph::Graph;
 use crate::utils;
 
@@ -179,44 +181,45 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize, k: usize) -> (Vec<u
     let mut ending_paths = vec![vec![0; length + 1]; g.cap()];
     let mut starting_paths = vec![vec![0; length + 1]; g.cap()];
     // counting phase of all starting/ending paths of all length
-    for d in 1..=length {
-        g.parents().iter().enumerate().for_each(|(i, parents)| {
-            if !s.contains(&i) {
-                // initializes the tables with 1 for nodes present in G - S
-                ending_paths[i][0] = 1;
-                starting_paths[i][0] = 1;
-            }
-            // checking each parents (vs only checking direct + 1parent in C#)
-            ending_paths[i][d] = parents
-                .iter()
-                // no ending path for node i if the parent is contained in S
-                // since G - S doesn't have this parent
-                .filter(|p| !s.contains(p))
-                .fold(0, |acc, &parent| acc + ending_paths[parent][d - 1]);
 
-            // difference vs the pseudo code: like in C#, increase parent count
-            // instead of iterating over children of node i
-            parents.iter().for_each(|&parent| {
-                if s.contains(&parent) {
-                    return;
-                }
-                starting_paths[parent][d] += starting_paths[i][d - 1];
-            });
+    for node in 0..g.size() {
+        if !s.contains(&node) {
+            // initializes the tables with 1 for nodes present in G - S
+            ending_paths[node][0] = 1;
+            starting_paths[node][0] = 1;
+        }
+    }
+
+    for d in 1..=length {
+        g.for_each_edge(|e| {
+            // checking each parents (vs only checking direct + 1parent in C#)
+            // no ending path for node i if the parent is contained in S
+            // since G - S doesn't have this parent
+            if !s.contains(&e.parent) {
+                ending_paths[e.child][d] += ending_paths[e.parent][d - 1];
+
+                // difference vs the pseudo code: like in C#, increase parent count
+                // instead of iterating over children of node i
+                starting_paths[e.parent][d] += starting_paths[e.child][d - 1];
+            }
         });
     }
 
     // counting how many incident paths of length d there is for each node
-    let mut incidents = vec![0; g.cap()];
+    let mut incidents = Vec::with_capacity(g.size());
+    let mut topk = vec![Pair(0, 0); k];
     // counting the top k node wo have the greatest number of incident paths
     // NOTE: difference with the C# that recomputes that vector separately.
     // Since topk is directly correlated to incidents[], we can compute both
     // at the same time and remove one O(n) iteration.
-    let mut topk = vec![Pair(0, 0); k];
-    let mut inserted = 0;
-    for i in 0..g.cap() {
-        for d in 0..=length {
-            incidents[i] += starting_paths[i][d] * ending_paths[i][length - d];
-        }
+    g.for_each_node(|&node| {
+        let node_idx = incidents.len();
+        let count = (0..=length)
+            .map(|d| starting_paths[node][d] * ending_paths[node][length - d])
+            .sum();
+        incidents.push(count);
+
+        // find the smaller element in top k
         let (idx, pair) = topk
             .iter()
             .cloned()
@@ -226,12 +229,12 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize, k: usize) -> (Vec<u
 
         // replace if the minimum number of incident paths in topk is smaller
         // than the one computed for node i in this iteration
-        if pair.1 < incidents[i] {
-            topk[idx] = Pair(i, incidents[i]);
-            inserted += 1;
+        if pair.1 < count {
+            topk[idx] = Pair(node_idx, count);
+            println!("topk {:?}", topk);
         }
-    }
-    assert!(inserted > 0);
+    });
+    topk.sort_by_key(|p| Reverse(p.1));
     (incidents, topk)
 }
 
@@ -278,18 +281,13 @@ fn valiant_reduce_main(g: &Graph, f: &Fn(&HashSet<usize>) -> bool) -> HashSet<us
         let partition = find_next();
         // add the origin node for each edges in the chosen partition
         s.extend(partition.iter().fold(Vec::new(), |mut acc, edge| {
-            acc.push(edge.0);
+            acc.push(edge.parent);
             acc
         }));
     }
 
     return s;
 }
-
-// Edge holds the origin and endpoint of an edge.
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-struct Edge(usize, usize);
-// FIXME: Move outside of this module.
 
 // valiant_partitions returns the sets E_i and S_i from the given graph
 // according to the definition algorithm 8 from
@@ -301,14 +299,13 @@ fn valiant_partitions(g: &Graph) -> Vec<HashSet<Edge>> {
         eis.push(HashSet::new());
     }
 
-    for (v, parents) in g.parents().iter().enumerate() {
-        for &u in parents.iter() {
-            let bit = utils::msbd(u, v);
-            assert!(bit < bs);
-            // edge j -> i differs at the nth bit
-            (&mut eis[bit]).insert(Edge(u, v));
-        }
-    }
+    g.for_each_edge(|edge| {
+        let bit = utils::msbd(edge);
+        debug_assert!(bit < bs);
+        // edge j -> i differs at the nth bit
+        eis[bit].insert(edge.clone());
+    });
+
     eis
 }
 
@@ -343,6 +340,8 @@ mod test {
         ];
     }
 
+    // FIXME: Update test description with new standardize order of `topk`
+    // in `count_paths`.
     #[test]
     fn test_greedy() {
         let mut graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
@@ -385,6 +384,8 @@ mod test {
         assert_eq!(s, HashSet::from_iter(vec![2, 4]));
     }
 
+    // FIXME: Update test description with new standardize order of `topk`
+    // in `count_paths`.
     #[test]
     fn test_append_removal_node() {
         let mut graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
@@ -407,7 +408,7 @@ mod test {
         // -> iteration 1 : node 4 inserted -> inradius {5, 0, 3, 2, 4}
         // -> iteration 2 : node 1 inserted -> inradius {5, 0, 1, 3, 2, 4}
         // 2 is there from the previous call to append_removal
-        assert_eq!(s, HashSet::from_iter(vec![2, 4, 1]));
+        assert_eq!(s, HashSet::from_iter(vec![1, 2, 4]));
         // TODO probably more tests with larger graph
     }
 
@@ -433,8 +434,7 @@ mod test {
         let k = 3;
         let (counts, topk) = count_paths(&graph, &s, target_length, k);
         assert_eq!(counts, vec![5, 5, 7, 6, 7, 3]);
-        // order is irrelevant so we keep vec
-        assert_eq!(topk, vec![Pair(3, 6), Pair(4, 7), Pair(2, 7)]);
+        assert_eq!(topk, vec![Pair(4, 7), Pair(2, 7), Pair(3, 6)]);
         s.insert(4);
         let (counts, topk) = count_paths(&graph, &s, target_length, k);
         assert_eq!(counts, vec![3, 3, 3, 3, 0, 0]);
@@ -467,17 +467,30 @@ mod test {
                 0 => {
                     assert_eq!(
                         edges,
-                        HashSet::from_iter(vec![Edge(0, 1), Edge(2, 3), Edge(4, 5), Edge(6, 7)])
+                        HashSet::from_iter(vec![
+                            Edge::new(0, 1),
+                            Edge::new(2, 3),
+                            Edge::new(4, 5),
+                            Edge::new(6, 7)
+                        ])
                     );
                 }
                 1 => {
                     assert_eq!(
                         edges,
-                        HashSet::from_iter(vec![Edge(0, 2), Edge(1, 2), Edge(4, 6), Edge(5, 6)])
+                        HashSet::from_iter(vec![
+                            Edge::new(0, 2),
+                            Edge::new(1, 2),
+                            Edge::new(4, 6),
+                            Edge::new(5, 6)
+                        ])
                     );
                 }
                 2 => {
-                    assert_eq!(edges, HashSet::from_iter(vec![Edge(2, 4), Edge(3, 4)]));
+                    assert_eq!(
+                        edges,
+                        HashSet::from_iter(vec![Edge::new(2, 4), Edge::new(3, 4)])
+                    );
                 }
                 _ => {}
             });
