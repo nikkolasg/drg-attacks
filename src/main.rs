@@ -29,15 +29,27 @@ fn porep_comparison() {
     let mut g1 = Graph::new(size, random_bytes, DRGAlgo::MetaBucket(deg));
 
     let depth = (0.25 * (size as f32)) as usize;
+    println!("{}", g1.stats());
     println!("Trial #1 with target depth = 0.25n = {}", depth);
     attack(&mut g1, DepthReduceSet::ValiantDepth(depth));
-    // example 1
-    // Attack with Valiant(4194304)
-    //    -> size 5936
-    //    -> time elapsed: 409.995829453s
-    let set_size = 314572; // 0.30 * 2^20
-    println!("Trial #2 with target size set = 0.30n = {}", set_size);
+
+    let set_size = (0.30 * (size as f32)) as usize;
+    println!(
+        "Trial #2 with target size set = 0.30n = {} (G-S = 0.7n)",
+        set_size
+    );
     attack(&mut g1, DepthReduceSet::ValiantSize(set_size));
+    // sample output
+    // Trial #1 with target depth = 0.25n = 262144
+    // Attack with ValiantDepth(262144)
+    //         -> size 2383
+    //         -> depth(G-S) 13139
+    //         -> time elapsed: 41.093014679s
+    // Trial #2 with target size set = 0.30n = 314572 (G-S = 0.7n)
+    // Attack with ValiantSize(314572)
+    //         -> size 545897
+    //         -> depth(G-S) 6
+    //         -> time elapsed: 32.326625512s
 }
 
 fn large_graphs() {

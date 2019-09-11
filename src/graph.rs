@@ -1,6 +1,6 @@
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
 use std::fmt;
@@ -17,7 +17,6 @@ pub struct Graph {
     // the parent of any other node. In that case, it is not included in the graph G
     parents: Vec<Vec<Node>>,
     // FIXME: Use slices, after construction this doesn't change.
-
     size: usize,
 
     seed: [u8; 32],
@@ -41,10 +40,7 @@ pub struct Edge {
 impl Edge {
     pub fn new(parent: Node, child: Node) -> Edge {
         debug_assert!(parent < child);
-        Edge {
-            parent,
-            child,
-        }
+        Edge { parent, child }
     }
 }
 
@@ -228,14 +224,17 @@ impl Graph {
                         let max_bucket = (meta_idx as f32).log2().ceil() as usize;
                         // choose bucket index {1 ... ceil(log2(idx))}
                         let i: usize = rng.gen_range(1, max_bucket + 1);
-                        // choose parent in range [2^(i-1), 2^i[
-                        let min = 1 << (i - 1);
+                        // choose parent in range [2^(i-1), max(meta,2^i)[
+
                         // min to avoid choosing a node which is higher than
                         // the meta_idx - can happen since we can choose one
                         // in the same bucket!
                         let max = std::cmp::min(meta_idx, 1 << i);
+                        // max with 1 instead of 2 in the paper since in the impl.
+                        // nodes are 0-based indexed
+                        let min = std::cmp::max(1, 1 << (i - 1));
                         assert!(max <= meta_idx);
-                        let meta_parent = rng.gen_range(min, max);
+                        let meta_parent = meta_idx - rng.gen_range(min, max);
                         let real_parent = meta_parent / degree;
                         assert!(meta_parent < meta_idx);
                         assert!(real_parent < node);
@@ -285,7 +284,9 @@ impl Graph {
     // node but do not allow complete access to the inner structure.
 
     pub fn for_each_edge<F>(&self, mut func: F)
-    where F: FnMut(&Edge) -> () {
+    where
+        F: FnMut(&Edge) -> (),
+    {
         for (child, all_parents) in self.parents().iter().enumerate() {
             for &parent in all_parents.iter() {
                 func(&Edge::new(parent, child));
@@ -298,7 +299,9 @@ impl Graph {
     // FIXME: Extend `F` definition to be able to return information (useful
     // to form new vectors from the original set of nodes).
     pub fn for_each_node<F>(&self, mut func: F)
-    where F: FnMut(&Node) -> () {
+    where
+        F: FnMut(&Node) -> (),
+    {
         for node in 0..self.size() {
             func(&node);
         }
@@ -306,6 +309,35 @@ impl Graph {
 
     pub fn cap(&self) -> usize {
         self.parents.len()
+    }
+
+    pub fn stats(&self) -> String {
+        let mut parents = HashMap::new();
+        let mut children = HashMap::new();
+        self.for_each_edge(|edge| {
+            let count = parents.entry(edge.child).or_insert(0);
+            *count += 1;
+            let count = children.entry(edge.parent).or_insert(0);
+            *count += 1;
+        });
+        for i in 0..=self.degree() {
+            parents.remove(&i);
+        }
+        let min_parent = parents.values().min().unwrap();
+        let max_children = children.values().max().unwrap();
+        format!(
+            "graph stats: size={}, min parents={}, max children={}",
+            self.size(),
+            min_parent,
+            max_children
+        )
+    }
+
+    pub fn degree(&self) -> usize {
+        match self.algo {
+            DRGAlgo::BucketSample => 2,
+            DRGAlgo::MetaBucket(deg) => deg,
+        }
     }
 }
 
