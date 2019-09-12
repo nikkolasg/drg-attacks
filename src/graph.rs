@@ -223,7 +223,7 @@ impl Graph {
 
                     // similar to bucket_sample but we select m parents instead
                     // of just one
-                    for _ in 0..m {
+                    for k in 0..m {
                         // meta_idx represents a meta node in the meta graph
                         // each node is represented m times, so we always take the
                         // first node index to not fall on the same final index
@@ -241,7 +241,7 @@ impl Graph {
                         // the meta_idx - can happen since we can choose one
                         // in the same bucket!
                         let max = std::cmp::min(meta_idx, 1 << i);
-                        let min = std::cmp::max(2, 1 << (i - 1));
+                        let min = std::cmp::max(2, max >> 1);
                         assert!(max <= meta_idx);
                         let meta_parent = meta_idx - rng.gen_range(min, max + 1);
                         let real_parent = meta_parent / degree;
