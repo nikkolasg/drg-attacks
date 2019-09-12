@@ -241,9 +241,7 @@ impl Graph {
                         // the meta_idx - can happen since we can choose one
                         // in the same bucket!
                         let max = std::cmp::min(meta_idx, 1 << i);
-                        // max with 1 instead of 2 in the paper since in the impl.
-                        // nodes are 0-based indexed
-                        let min = std::cmp::max(1, 1 << (i - 1));
+                        let min = std::cmp::max(2, 1 << (i - 1));
                         assert!(max <= meta_idx);
                         let meta_parent = meta_idx - rng.gen_range(min, max);
                         let real_parent = meta_parent / degree;
