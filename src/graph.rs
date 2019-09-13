@@ -244,7 +244,7 @@ impl Graph {
                         let min = std::cmp::max(2, max >> 1);
                         assert!(max <= meta_idx);
                         let meta_parent = meta_idx - rng.gen_range(min, max + 1);
-                        let real_parent = meta_parent / degree;
+                        let real_parent = meta_parent / m;
                         assert!(meta_parent < meta_idx);
                         assert!(real_parent < node);
                         parents.push(real_parent);
