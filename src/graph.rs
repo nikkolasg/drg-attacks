@@ -184,14 +184,14 @@ impl Graph {
                     parents.push(node - 1);
 
                     // choose a bucket index
-                    let max_bucket = (node as f32).log2().floor() as usize;
+                    let max_bucket = (node as f32).log2().ceil() as usize;
                     let i: usize = rng.gen_range(1, max_bucket + 1);
                     // get a node from that bucket, i.e. from [2^i-1, 2^i[
                     // exclusif because otherwise a parent can be the same
                     // as its child
-                    let min = 1 << (i - 1);
-                    let max = 1 << i;
-                    let random_parent = rng.gen_range(min, max);
+                    let max = std::cmp::min(node, 1 << i);
+                    let min = std::cmp::max(2, max >> 1);
+                    let random_parent = node - rng.gen_range(min, max + 1);
                     assert!(random_parent < node);
                     parents.push(random_parent);
                 }
