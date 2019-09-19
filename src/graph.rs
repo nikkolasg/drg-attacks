@@ -136,6 +136,41 @@ impl Graph {
             .unwrap()
     }
 
+    /// Returns the depth of the graph when removing the given edges
+    // TODO: Is it possible to use traits to implement the equivalent of
+    // function overloading as to get only one "depth_exclude" that works
+    // for both types ?
+    pub fn depth_exclude_edges(&self, edges: &HashSet<Edge>) -> usize {
+        // transform set of edges into list of parent relationship
+        let edges_map = edges.iter().fold(HashMap::new(), |mut acc, edge| {
+            (*acc.entry(edge.child).or_insert(Vec::new())).push(edge.parent);
+            acc
+        });
+
+        self.parents
+            .iter()
+            .enumerate()
+            .fold(Vec::new(), |mut acc, (child, parents)| {
+                match parents
+                    .iter()
+                    // filter all parents which are in the list of edges to remove
+                    .filter(|&parent| match edges_map.get(&child) {
+                        None => true,
+                        Some(pparents) => !pparents.contains(parent),
+                    })
+                    .map(|&parent| acc[parent] + 1)
+                    .max()
+                {
+                    Some(depth) => acc.push(depth),
+                    None => acc.push(0),
+                }
+                acc
+            })
+            .into_iter()
+            .max()
+            .unwrap()
+    }
+
     // remove returns a new graph with the specified nodes removed
     // TODO slow path checking in O(n) - consider using bitset for nodes
     pub fn remove(&self, nodes: &HashSet<usize>) -> Graph {
@@ -310,6 +345,13 @@ impl Graph {
 
     fn rng(&self) -> ChaCha20Rng {
         ChaCha20Rng::from_seed(self.seed)
+    }
+
+    /// Returns the number of edges
+    pub fn count_edges(&self) -> usize {
+        self.parents
+            .iter()
+            .fold(0, |acc, parents| acc + parents.len())
     }
 
     pub fn parents(&self) -> &Vec<Vec<Node>> {
@@ -526,6 +568,14 @@ pub mod tests {
     }
 
     #[test]
+    fn graph_count_edges() {
+        let p1 = vec![vec![], vec![0], vec![1], vec![2], vec![3]];
+        assert_eq!(graph_from(p1).count_edges(), 4);
+        let p2 = vec![vec![], vec![], vec![0], vec![2], vec![2, 3], vec![3]];
+        assert_eq!(graph_from(p2).count_edges(), 5);
+    }
+
+    #[test]
     fn graph_depth_exclude() {
         let p1 = vec![vec![], vec![0], vec![1], vec![2], vec![3]];
         let g1 = graph_from(p1);
@@ -538,6 +588,18 @@ pub mod tests {
         assert!(depthex < (g2.cap() - s.len()));
         let g3 = g2.remove(&s);
         assert_eq!(g3.depth(), depthex);
+    }
+
+    #[test]
+    fn graph_depth_exclude_edges() {
+        // 0->1->-2->3->4->5
+        // 2->4
+        // we remove 2->4 and 4->5
+        // so max depth is 0->1->2->3->4 = 4 instead of 5
+        let p2 = vec![vec![], vec![0], vec![1], vec![2], vec![2, 3], vec![4]];
+        assert_eq!(graph_from(p2.clone()).depth(), 5);
+        let edges = HashSet::from_iter(vec![Edge::new(2, 4), Edge::new(4, 5)]);
+        assert_eq!(graph_from(p2).depth_exclude_edges(&edges), 4);
     }
 
     pub fn graph_from(parents: Vec<Vec<Node>>) -> Graph {
