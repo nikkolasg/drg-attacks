@@ -1,16 +1,19 @@
 use std::cmp::Reverse;
 use std::collections::HashSet;
 
-use crate::graph::{DRGAlgo, Graph, Edge};
+use crate::graph::{DRGAlgo, Edge, Graph};
 use crate::utils;
 
 #[derive(Debug)]
 pub enum DepthReduceSet {
-    // depth of the resulting G-S graph desired
+    /// depth of the resulting G-S graph desired
     ValiantDepth(usize),
-    // size of the resulting S desired
+    /// size of the resulting S desired
     ValiantSize(usize),
-    // depth of the resulting G-S graph and some specific parameters
+    /// AB16 Lemma 6.2 variant of the Valiant Lemma's based attack.
+    /// Parameter  is size of the resulting G-S graph desired
+    ValiantAB16(usize),
+    /// depth of the resulting G-S graph and some specific parameters
     Greedy(usize, GreedyParams),
 }
 
@@ -18,6 +21,7 @@ pub fn depth_reduce(g: &mut Graph, drs: DepthReduceSet) -> HashSet<usize> {
     match drs {
         DepthReduceSet::ValiantDepth(_) => valiant_reduce(g, drs),
         DepthReduceSet::ValiantSize(_) => valiant_reduce(g, drs),
+        DepthReduceSet::ValiantAB16(_) => valiant_reduce(g, drs),
         DepthReduceSet::Greedy(target, p) => greedy_reduce(g, target, p),
     }
 }
@@ -237,6 +241,64 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize, k: usize) -> (Vec<u
     (incidents, topk)
 }
 
+/// Implements the algorithm described in the Lemma 6.2 of the [AB16
+/// paper](https://eprint.iacr.org/2016/115.pdf).
+/// For a graph G with m edges, 2^k vertices, and \delta in-ground degree,
+/// it returns a set S such that depth(G-S) <= 2^k-t
+/// It iterates over t until depth(G-S) <= depth.
+fn valiant_ab16(g: &Graph, target: usize) -> HashSet<usize> {
+    let mut s = HashSet::new();
+    // FIXME can we avoid that useless first copy ?
+    let mut curr = g.remove(&s);
+    loop {
+        let partitions = valiant_partitions(&curr);
+        // mi = # of edges at iteration i
+        let mi = curr.count_edges();
+        let depth = curr.depth();
+        // depth at iteration i
+        let di = depth.next_power_of_two();
+        // power of exp. such that di <= 2^ki
+        let ki = (di as f32).log2().ceil() as usize;
+        let max_size = mi / ki;
+        // take the minimum partition which has a size <= mi/ki
+        let chosen: &HashSet<Edge> = partitions
+            .iter()
+            .filter(|&partition| partition.len() > 0)
+            .filter(|&partition| partition.len() <= max_size)
+            .min_by_key(|&partition| partition.len())
+            .unwrap();
+        // TODO should this be even a condition to search for the partition ?
+        // Paper claims it's always the case by absurd
+        let new_depth = curr.depth_exclude_edges(chosen);
+        assert!(new_depth <= (di >> 1));
+        // G_i+1 = G_i - S_i  where S_i is set of origin nodes in chosen partition
+        let si = chosen
+            .iter()
+            .map(|edge| edge.parent)
+            .collect::<HashSet<usize>>();
+        /*        println!(*/
+        //"m/k = {}/{} = {}, chosen = {:?}, new_depth {}, curr.depth() {}, curr.dpeth_exclude {}, new edges {}, si {:?}",
+        //mi,
+        //ki,
+        //max_size,
+        //chosen,
+        //new_depth,
+        //curr.depth(),
+        //curr.depth_exclude(&si),
+        //curr.count_edges(),
+        //si,
+        /*);*/
+        curr = curr.remove(&si);
+        s.extend(si);
+
+        if curr.depth() <= target {
+            //println!("\t -> breaking out, depth(G-S) = {}", g.depth_exclude(&s));
+            break;
+        }
+    }
+    return s;
+}
+
 fn valiant_reduce(g: &Graph, d: DepthReduceSet) -> HashSet<usize> {
     match d {
         // valiant_reduce returns a set S such that depth(G - S) < target.
@@ -247,6 +309,7 @@ fn valiant_reduce(g: &Graph, d: DepthReduceSet) -> HashSet<usize> {
         DepthReduceSet::ValiantSize(size) => {
             valiant_reduce_main(g, &|set: &HashSet<usize>| set.len() < size)
         }
+        DepthReduceSet::ValiantAB16(depth) => valiant_ab16(g, depth),
         _ => panic!("that should not happen"),
     }
 }
@@ -342,8 +405,6 @@ mod test {
         ];
     }
 
-    // FIXME: Update test description with new standardize order of `topk`
-    // in `count_paths`.
     #[test]
     fn test_greedy() {
         let mut graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
@@ -456,7 +517,7 @@ mod test {
             // target length using any of the `k` connections, even
             // the longest one (of a distance of `k` nodes), so the
             // longest path overall should accommodate `k * length` nodes.
-            if TEST_SIZE/2 < k * TEST_MAX_PATH_LENGTH {
+            if TEST_SIZE / 2 < k * TEST_MAX_PATH_LENGTH {
                 break;
             }
 
@@ -494,6 +555,33 @@ mod test {
         let graph = graph::tests::graph_from(TEST_PARENTS.to_vec());
         let set = valiant_reduce(&graph, DepthReduceSet::ValiantSize(3));
         assert_eq!(set, HashSet::from_iter(vec![0, 2, 3, 4, 6]));
+    }
+
+    #[test]
+    fn test_valiant_ab16() {
+        let parents = vec![
+            vec![],
+            vec![0],
+            vec![1],
+            vec![2],
+            vec![3],
+            vec![4],
+            vec![5],
+            vec![6],
+        ];
+
+        let g = graph::tests::graph_from(parents);
+        let target = 4;
+        let set = valiant_reduce(&g, DepthReduceSet::ValiantAB16(target));
+        assert!(g.depth_exclude(&set) < target);
+        // 3->4 differs at 3rd bit and they're the only one differing at that bit
+        // so set s contains origin node 3
+        assert_eq!(set, HashSet::from_iter(vec![3]));
+
+        let g = Graph::new(TEST_SIZE, graph::tests::TEST_SEED, DRGAlgo::MetaBucket(2));
+        let target = TEST_SIZE / 4;
+        let set = valiant_reduce(&g, DepthReduceSet::ValiantAB16(target));
+        assert!(g.depth_exclude(&set) <= target);
     }
 
     #[test]

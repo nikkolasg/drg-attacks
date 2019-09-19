@@ -472,7 +472,7 @@ pub mod tests {
     use super::*;
     use std::iter::FromIterator;
 
-    static TEST_SEED: [u8; 32] = [1; 32];
+    pub static TEST_SEED: [u8; 32] = [1; 32];
 
     #[test]
     fn graph_new() {
