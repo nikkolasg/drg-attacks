@@ -235,7 +235,7 @@ impl Graph {
                         let max_bucket = (meta_idx as f32).log2().ceil() as usize;
                         // choose bucket index {1 ... ceil(log2(idx))}
                         let i: usize = rng.gen_range(1, max_bucket + 1);
-                        // choose parent in range [2^(i-1), max(meta,2^i)[
+                        // choose parent in range [min(2, 2^(i-1)), max(meta,2^i)[
 
                         // min to avoid choosing a node which is higher than
                         // the meta_idx - can happen since we can choose one
