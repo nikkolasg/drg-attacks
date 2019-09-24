@@ -101,9 +101,13 @@ fn greedy_attacks() {
     let size = (2 as usize).pow(12);
     let deg = 6;
     let depth = (0.25 * size as f64) as usize;
-    //let mut g1 = Graph::new(size, random_bytes, DRGAlgo::MetaBucket(deg));
     let mut g1 = Graph::load_or_create(fname, size, random_bytes, DRGAlgo::MetaBucket(deg));
     let mut g2 = Graph::load_or_create(fname, size, random_bytes, DRGAlgo::BucketSample);
+    println!(
+        "Greedy attacks tests with size = {}, depth(G-S) <= {}",
+        size, depth
+    );
+
     //attack(&mut g1, DepthReduceSet::ValiantDepth(depth));
 
     let mut greed_params = GreedyParams {

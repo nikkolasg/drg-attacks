@@ -622,6 +622,10 @@ pub mod tests {
 
         let p2 = vec![vec![], vec![], vec![0], vec![2], vec![2, 3], vec![3]];
         assert_eq!(graph_from(p2).depth(), 3);
+
+        let size = 2048;
+        let g3 = Graph::new(size, TEST_SEED, DRGAlgo::MetaBucket(3));
+        assert_eq!(g3.depth(), size - 1);
     }
 
     #[test]
@@ -645,6 +649,16 @@ pub mod tests {
         assert!(depthex < (g2.cap() - s.len()));
         let g3 = g2.remove(&s);
         assert_eq!(g3.depth(), depthex);
+
+        let size = (2 as usize).pow(10);
+        let g3 = Graph::new(size, TEST_SEED, DRGAlgo::MetaBucket(3));
+        assert!(g3.depth() < size);
+        let ssize = (2 ^ 6);
+        let mut rng = ChaCha20Rng::from_seed(TEST_SEED);
+        let sv = (0..ssize)
+            .map(|_| rng.gen_range(0, size))
+            .collect::<HashSet<usize>>();
+        assert!(g3.depth_exclude(&sv) < size);
     }
 
     #[test]
