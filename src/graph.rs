@@ -665,10 +665,14 @@ pub mod tests {
     /// buckets depending on the distance between the parent node and the child node,
     /// the buckets should have relatively same size. One sample is shown below:
     /// ```
-    ///     drsample: size 32768 -> [32767, 3151, 2095, 2195, 2203, 2260, 2230, 2350, 24
-    ///         16, 2400, 2377, 2286, 2085, 2121, 1881, 716]
-    ///     buckets: size 32768 -> [32767, 3762, 4033, 4082, 4187, 4248, 4370, 4441, 453
-    ///        0, 4403, 4262, 4153, 4216, 3858, 3544, 1275]
+    ///     drsample: size 32768
+    ///             -> mean 2251.5, std_dev 112.204796 -> [1914.8856,2588.1143]
+    ///             -> [32767, 3151, 2095, 2195, 2203, 2260, 2230, 2350, 2416, 2400, 237
+    ///     7, 2286, 2085, 2121, 1881, 716]
+    ///     drsample: size 32768
+    ///             -> mean 4231.9165, std_dev 180.83716 -> [3689.405,4774.4277]
+    ///             -> [32767, 3762, 4033, 4082, 4187, 4248, 4370, 4441, 4530, 4403, 426
+    ///     2, 4153, 4216, 3858, 3544, 1275]
     ///
     /// ```
     /// We can see the first entry is always the same since these are the direct edges.
@@ -677,15 +681,66 @@ pub mod tests {
     /// that are at least at the index 2^9 !
     /// We can see for the rest of the buckets they are equivalently reqpresented, so the
     /// property is satisfied.
+    /// NOTE: the test only start from the 3rd item and up to the third to last item in the
+    /// bucket slices. The reason is the first 2 buckets have much higher number because
+    /// the first nodes have a high pr. of falling into that buckets (no other choices).
+    /// For the last buckets, see explanation before.
     fn graph_buckets() {
         let size = (2 as usize).pow(15);
 
+        let test_dist = |g: &Graph| {
+            let buckets = g.buckets();
+            let normed = &buckets[2..buckets.len() - 2];
+            let std = std_deviation(normed).unwrap();
+            let mean = mean(normed).unwrap();
+            let max = mean + 3.0 * std;
+            let min = mean - 3.0 * std;
+            println!(
+                "drsample: size {}\n\t-> mean {}, std_dev {} -> [{},{}]\n\t-> {:?}",
+                size, mean, std, min, max, buckets
+            );
+            assert_eq!(
+                0,
+                normed
+                    .iter()
+                    // three sigma rule
+                    .filter(|&&v| v as f32 >= max || v as f32 <= min)
+                    .count()
+            );
+        };
         let drsample = Graph::new(size, TEST_SEED, DRGAlgo::BucketSample);
-        println!("drsample: size {} -> {:?}", size, drsample.buckets());
+        test_dist(&drsample);
         let bucket = Graph::new(size, TEST_SEED, DRGAlgo::MetaBucket(3));
-        println!("buckets: size {} -> {:?}", size, bucket.buckets());
+        test_dist(&bucket);
+    }
+    fn mean(data: &[usize]) -> Option<f32> {
+        let sum = data.iter().sum::<usize>() as f32;
+        let count = data.len();
+
+        match count {
+            positive if positive > 0 => Some(sum / count as f32),
+            _ => None,
+        }
     }
 
+    fn std_deviation(data: &[usize]) -> Option<f32> {
+        match (mean(data), data.len()) {
+            (Some(data_mean), count) if count > 0 => {
+                let variance = data
+                    .iter()
+                    .map(|value| {
+                        let diff = data_mean - (*value as f32);
+
+                        diff * diff
+                    })
+                    .sum::<f32>()
+                    / count as f32;
+
+                Some(variance.sqrt())
+            }
+            _ => None,
+        }
+    }
     pub fn graph_from(parents: Vec<Vec<Node>>) -> Graph {
         Graph {
             size: (&parents).len(),
