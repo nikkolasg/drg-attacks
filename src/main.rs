@@ -42,8 +42,8 @@ fn porep_comparison() {
 
     let depth = (0.25 * (size as f32)) as usize;
     println!("{}", g1.stats());
-    /*println!("Trial #1 with target depth = 0.25n = {}", depth);*/
-    /*attack(&mut g1, DepthReduceSet::ValiantDepth(depth));*/
+    println!("Trial #1 with target depth = 0.25n = {}", depth);
+    attack(&mut g1, DepthReduceSet::ValiantDepth(depth));
 
     //let set_size = (0.30 * (size as f32)) as usize;
     //println!(
@@ -66,7 +66,7 @@ fn porep_comparison() {
             GreedyParams {
                 k: GreedyParams::k_ratio(n as usize),
                 radius: 8,
-                length: 64,
+                length: 16,
                 reset: true,
             },
         ),
@@ -162,6 +162,6 @@ fn small_graph() {
 
 fn main() {
     //small_graph();
-    greedy_attacks();
-    //porep_comparison();
+    //greedy_attacks();
+    porep_comparison();
 }
