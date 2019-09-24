@@ -1,14 +1,17 @@
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
+use serde::{Deserialize, Serialize};
 use std::cmp::max;
 use std::collections::{HashMap, HashSet};
-use std::hash::Hash;
-
+use std::error;
 use std::fmt;
+use std::fs::File;
+use std::hash::Hash;
+use std::io::BufReader;
 
 // Graph holds the parameters and the edges of the graph. This is a special type
 // of graph that has a *proper* labelling: for each edge (i,j), we have i < j.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Graph {
     // parents holds all parents relationships of all nodes.
     // If j = parents[i][u] (for any u), then there is an edge (j -> i),
@@ -50,7 +53,7 @@ impl Edge {
 
 // DRGAlgo represents which algorithm can be used to create the edges so a Graph is
 // a Depth Robust Graph
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum DRGAlgo {
     // BucketSample is the regular bucket sampling algorithm with degree 2
     BucketSample,
@@ -81,6 +84,42 @@ impl Graph {
             DRGAlgo::KConnector(k) => g.connect_neighbors(k),
         }
         g
+    }
+
+    /// load_or_create tries to read the json description of the graph specified
+    /// by the first argument. If it fails, it creates the graph by passing
+    /// the rest of the argumetn to Graph::new, and saves the graph at the
+    /// specified location.
+    /// FIXME: why is it still taking so much time..
+    pub fn load_or_create(fname: &str, size: usize, seed: [u8; 32], algo: DRGAlgo) -> Graph {
+        match Graph::load(fname) {
+            Ok(graph) => {
+                println!("graph loaded from {}", fname);
+                graph
+            }
+            Err(_) => {
+                let g = Graph::new(size, seed, algo);
+                g.save(fname);
+                println!("graph created and saved at {}", fname);
+                g
+            }
+        }
+    }
+
+    fn load(fname: &str) -> Result<Graph, Box<dyn error::Error>> {
+        // Open the file in read-only mode with buffer.
+        let file = File::open(fname)?;
+
+        let g = serde_json::from_reader(file)?;
+        Ok(g)
+    }
+
+    fn save(&self, fname: &str) {
+        let file =
+            File::create(fname).expect(format!("unable to save graph to {}", fname).as_str());
+
+        serde_json::to_writer(file, self)
+            .expect(format!("unable to save graph to {}", fname).as_str());
     }
 
     /// Number of nodes in the graph.
@@ -418,6 +457,24 @@ impl Graph {
         }
     }
 
+    /// buckets compute the different buckets Bi as defined in Alwen et al.
+    /// to verify if they are all of relatively similar sizes. Since depth reducing
+    /// set attacks are using the property that different buckets have different
+    /// highly variable sizes, DRSample offers a core protection against these
+    /// attacks by forcing the buckets to have ~ equal sizes.
+    fn buckets(&self) -> Vec<usize> {
+        let log = (self.cap() as f32).log2().ceil() as usize;
+        let mut ret = vec![0; log + 1];
+        self.for_each_edge(|edge| {
+            // dist = | u - v |
+            let dist = (edge.child as i64 - edge.parent as i64).abs() as usize;
+            // dist <= 2^î
+            let i = (dist.next_power_of_two() as f32).log2().floor() as usize;
+            ret[i] += 1;
+        });
+        return ret;
+    }
+
     /// Convert the graph to a matrix where an `X` signals an edge
     /// connecting a parent row to a child column
     // FIXME: Decide the width based on the `size()` instead
@@ -600,6 +657,33 @@ pub mod tests {
         assert_eq!(graph_from(p2.clone()).depth(), 5);
         let edges = HashSet::from_iter(vec![Edge::new(2, 4), Edge::new(4, 5)]);
         assert_eq!(graph_from(p2).depth_exclude_edges(&edges), 4);
+    }
+
+    #[test]
+    /// This test is testing the distribution of the edges of both bucket sample and
+    /// drsample. As indicated in Alwen et al., when separating the edges into different
+    /// buckets depending on the distance between the parent node and the child node,
+    /// the buckets should have relatively same size. One sample is shown below:
+    /// ```
+    ///     drsample: size 32768 -> [32767, 3151, 2095, 2195, 2203, 2260, 2230, 2350, 24
+    ///         16, 2400, 2377, 2286, 2085, 2121, 1881, 716]
+    ///     buckets: size 32768 -> [32767, 3762, 4033, 4082, 4187, 4248, 4370, 4441, 453
+    ///        0, 4403, 4262, 4153, 4216, 3858, 3544, 1275]
+    ///
+    /// ```
+    /// We can see the first entry is always the same since these are the direct edges.
+    /// The last entries have lower values since only a small portion of the nodes can
+    /// have such a distance (2^9 <= dist(u,v) <= 2^10) with their parent, only the one
+    /// that are at least at the index 2^9 !
+    /// We can see for the rest of the buckets they are equivalently reqpresented, so the
+    /// property is satisfied.
+    fn graph_buckets() {
+        let size = (2 as usize).pow(15);
+
+        let drsample = Graph::new(size, TEST_SEED, DRGAlgo::BucketSample);
+        println!("drsample: size {} -> {:?}", size, drsample.buckets());
+        let bucket = Graph::new(size, TEST_SEED, DRGAlgo::MetaBucket(3));
+        println!("buckets: size {} -> {:?}", size, bucket.buckets());
     }
 
     pub fn graph_from(parents: Vec<Vec<Node>>) -> Graph {

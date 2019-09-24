@@ -28,21 +28,26 @@ pub fn depth_reduce(g: &mut Graph, drs: DepthReduceSet) -> HashSet<usize> {
 
 // GreedyParams holds the different parameters to choose for the greedy algorithm
 // such as the radius from which to delete nodes and the heuristic length.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GreedyParams {
     // how many k nodes do we "remove" at each iteration in append_removal
     pub k: usize,
     // the radius for the heuristic to delete as well close nodes within a
     // radius of a selected node.
     pub radius: usize,
-    //#[allow(dead_code)]
     // maximum lenth of the path - heuristic for the table produced by count_paths
     // see paragraph below equation 8.
-    // TODO: NOT (really) IMPLEMENTED YET - careful work is required
-    // pub length: usize,
+    pub length: usize,
     // test field to look at the impact of reseting the inradius set between
     // iterations or not.
     pub reset: bool,
+}
+
+impl GreedyParams {
+    pub fn k_ratio(size: usize) -> usize {
+        assert!(size >= 20);
+        (2 as usize).pow((size as u32 - 18) / 2) * 400
+    }
 }
 // greedy_reduce implements the Algorithm 5 of https://eprint.iacr.org/2018/944.pdf
 fn greedy_reduce(g: &mut Graph, target: usize, p: GreedyParams) -> HashSet<usize> {
@@ -52,13 +57,13 @@ fn greedy_reduce(g: &mut Graph, target: usize, p: GreedyParams) -> HashSet<usize
     while g.depth_exclude(&s) > target {
         // TODO use p.length when more confidence in the trick
         //let (_, topk) = count_paths(g, &s, target, p.k);
-        let (counts, topk) = count_paths(g, &s, target, p.k);
-        println!(
-            "main loop: depth {} > {}\n\t-> counts.len {:?}",
-            g.depth_exclude(&s),
-            target,
-            counts.len(),
-        );
+        let (counts, topk) = count_paths(g, &s, p.length, p.k);
+        /*println!(*/
+        //"main loop: depth {} > {}\n\t-> counts.len {:?}",
+        //g.depth_exclude(&s),
+        //target,
+        //counts.len(),
+        /*);*/
         append_removal(g, &mut s, &mut inradius, &topk, p.radius);
         // TODO
         // 1. Find what should be the normal behavior: clearing or continue
@@ -98,10 +103,10 @@ fn append_removal(
         set.insert(node.0);
         update_radius_set(g, node.0, inradius, radius);
         count += 1;
-        println!(
-            "\t-> iteration {} : node {} inserted -> inradius {:?}",
-            count, node.0, inradius,
-        );
+        /*println!(*/
+        //"\t-> iteration {} : node {} inserted -> inradius {:?}",
+        //count, node.0, inradius,
+        /*);*/
     }
     // if all nodes are already in the radius set, then take the
     // the one with the maximum incident paths.
@@ -111,8 +116,8 @@ fn append_removal(
         update_radius_set(g, node.0, inradius, radius);
     }
 
-    println!("\t-> topk {:?}", topk);
-    println!("\t-> added {} nodes in S: {:?}", count, set);
+    /*println!("\t-> topk {:?}", topk);*/
+    /*println!("\t-> added {} nodes in S: {:?}", count, set);*/
 }
 
 // update_radius_set fills the given inradius set with nodes that inside a radius
@@ -141,12 +146,12 @@ fn update_radius_set(g: &Graph, node: usize, inradius: &mut HashSet<usize>, radi
             .for_each(|&child| {
                 closests.insert(child);
             });
-        println!(
-            "\t add_direct node {}: at most {} parents and {} children",
-            v,
-            g.parents()[v].len(),
-            g.children()[v].len()
-        );
+        /*println!(*/
+        //"\t add_direct node {}: at most {} parents and {} children",
+        //v,
+        //g.parents()[v].len(),
+        //g.children()[v].len()
+        /*);*/
     };
     // insert first the given node and then add the close nodes
     inradius.insert(node);
@@ -161,12 +166,12 @@ fn update_radius_set(g: &Graph, node: usize, inradius: &mut HashSet<usize>, radi
         }
         tosearch = closests.clone();
         inradius.extend(closests);
-        println!(
-            "update radius {}: {} new nodes, total {}",
-            i,
-            tosearch.len(),
-            inradius.len()
-        );
+        /*println!(*/
+        //"update radius {}: {} new nodes, total {}",
+        //i,
+        //tosearch.len(),
+        //inradius.len()
+        /*);*/
     }
 }
 
@@ -234,7 +239,7 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize, k: usize) -> (Vec<u
         // than the one computed for node i in this iteration
         if pair.1 < count {
             topk[idx] = Pair(node_idx, count);
-            println!("topk {:?}", topk);
+            //println!("topk {:?}", topk);
         }
     });
     topk.sort_by_key(|p| Reverse(p.1));
@@ -412,6 +417,7 @@ mod test {
         let params = GreedyParams {
             k: 1,
             radius: 0,
+            length: 2,
             reset: false,
         };
         let s = greedy_reduce(&mut graph, 2, params);
@@ -419,6 +425,7 @@ mod test {
         let params = GreedyParams {
             k: 1,
             radius: 1,
+            length: 2,
             reset: false,
         };
         let s = greedy_reduce(&mut graph, 2, params);
@@ -431,6 +438,7 @@ mod test {
             k: 2,
             radius: 1,
             reset: false,
+            length: 2,
         };
         let s = greedy_reduce(&mut graph, 2, params);
         // main loop: depth 5 > 2
@@ -447,8 +455,6 @@ mod test {
         assert_eq!(s, HashSet::from_iter(vec![2, 4]));
     }
 
-    // FIXME: Update test description with new standardize order of `topk`
-    // in `count_paths`.
     #[test]
     fn test_append_removal_node() {
         let mut graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
@@ -623,5 +629,12 @@ mod test {
                 }
                 _ => {}
             });
+    }
+
+    #[test]
+    fn greedy_k_ratio() {
+        let size = 20; // n = 2^20
+        let k = GreedyParams::k_ratio(size as usize);
+        assert_eq!(k, 800);
     }
 }

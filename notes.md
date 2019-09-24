@@ -158,6 +158,10 @@ even go further since the minimum to choose r is 2, so v - r <= v - 2 always.
 + SHould we *always* add the first node of the "top k" ? or only if all of them
     are in the radius, then only then, we add the first one ? Why not a random one
 
+### Observations
+
++ Changing k doesn't seem to improve results but improve computation time when
+  reducing k
 
 ## Comparisons
 
