@@ -94,16 +94,18 @@ fn append_removal(
     }
 
     let mut count = 0;
+    let mut excluded = 0;
     for node in topk.iter() {
         if inradius.contains(&node.0) {
             // difference with previous insertion is that we only include
             // nodes NOT in the radius set
+            excluded += 1;
             continue;
         }
         set.insert(node.0);
         update_radius_set(g, node.0, inradius, radius);
         count += 1;
-        /*println!(*/
+        /*        println!(*/
         //"\t-> iteration {} : node {} inserted -> inradius {:?}",
         //count, node.0, inradius,
         /*);*/
@@ -116,8 +118,15 @@ fn append_removal(
         update_radius_set(g, node.0, inradius, radius);
     }
 
-    /*println!("\t-> topk {:?}", topk);*/
-    /*println!("\t-> added {} nodes in S: {:?}", count, set);*/
+    let d = g.depth_exclude(&set);
+    println!(
+        "\t-> added {}/{} nodes in |S| = {}, depth(G-S) = {} = {:.3}n",
+        count,
+        topk.len(),
+        set.len(),
+        d,
+        (d as f32) / (g.cap() as f32)
+    );
 }
 
 // update_radius_set fills the given inradius set with nodes that inside a radius
