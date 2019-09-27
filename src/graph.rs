@@ -92,18 +92,16 @@ impl Graph {
     /// specified location.
     /// FIXME: why is it still taking so much time..
     pub fn load_or_create(fname: &str, size: usize, seed: [u8; 32], algo: DRGAlgo) -> Graph {
-        match Graph::load(fname) {
-            Ok(graph) => {
-                println!("graph loaded from {}", fname);
-                graph
-            }
-            Err(_) => {
-                let g = Graph::new(size, seed, algo);
-                g.save(fname);
-                println!("graph created and saved at {}", fname);
-                g
+        if let Ok(graph) = Graph::load(fname) {
+            println!("graph loaded from {}", fname);
+            if graph.cap() == size {
+                return graph;
             }
         }
+        let g = Graph::new(size, seed, algo);
+        g.save(fname);
+        println!("graph created and saved at {}", fname);
+        g
     }
 
     fn load(fname: &str) -> Result<Graph, Box<dyn error::Error>> {
@@ -415,9 +413,7 @@ impl Graph {
     // FIXME: Extend `F` definition to be able to return information (useful
     // to form new vectors from the original set of nodes).
     pub fn for_each_node<F>(&self, mut func: F)
-    where
-        F: FnMut(&Node) -> (),
-    {
+    where F: FnMut(&Node) -> () {
         for node in 0..self.size() {
             func(&node);
         }
