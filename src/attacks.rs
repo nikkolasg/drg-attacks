@@ -1,5 +1,5 @@
-use std::cmp::Reverse;
-use std::collections::HashSet;
+use std::cmp::{Ordering, Reverse};
+use std::collections::{BinaryHeap, HashSet};
 
 use crate::graph::{DRGAlgo, Edge, Graph};
 use crate::utils;
@@ -28,7 +28,7 @@ pub fn depth_reduce(g: &mut Graph, drs: DepthReduceSet) -> HashSet<usize> {
 
 // GreedyParams holds the different parameters to choose for the greedy algorithm
 // such as the radius from which to delete nodes and the heuristic length.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct GreedyParams {
     // how many k nodes do we "remove" at each iteration in append_removal
     pub k: usize,
@@ -40,7 +40,13 @@ pub struct GreedyParams {
     pub length: usize,
     // test field to look at the impact of reseting the inradius set between
     // iterations or not.
+    // FIXME: it can sometimes create an infinite loop
+    // depending on the graph: if the inradius set contains the whole graph,
+    // the greedy_reduce will loop infinitely
     pub reset: bool,
+    // test field: when set, the topk nodes are selected one by one, updating the
+    // radius set for each selected node.
+    pub iter_topk: bool,
 }
 
 impl GreedyParams {
@@ -49,22 +55,23 @@ impl GreedyParams {
         (2 as usize).pow((size as u32 - 18) / 2) * 400
     }
 }
+
 // greedy_reduce implements the Algorithm 5 of https://eprint.iacr.org/2018/944.pdf
 fn greedy_reduce(g: &mut Graph, target: usize, p: GreedyParams) -> HashSet<usize> {
     let mut s = HashSet::new();
     g.children_project();
     let mut inradius: HashSet<usize> = HashSet::new();
+    let mut it = 0;
     while g.depth_exclude(&s) > target {
+        if it > 10 {
+            break;
+        }
+        it += 1;
         // TODO use p.length when more confidence in the trick
-        //let (_, topk) = count_paths(g, &s, target, p.k);
-        let (counts, incidents) = count_paths(g, &s, p.length);
-        /*println!(*/
-        //"main loop: depth {} > {}\n\t-> counts.len {:?}",
-        //g.depth_exclude(&s),
-        //target,
-        //counts.len(),
-        /*);*/
-        append_removal(g, &mut s, &mut inradius, &incidents, p.radius, p.k);
+        let incidents = count_paths(g, &s, &p);
+        println!("+ incidents {:?}", incidents);
+        append_removal(g, &mut s, &mut inradius, &incidents, &p);
+
         // TODO
         // 1. Find what should be the normal behavior: clearing or continue
         // updating the inradius set
@@ -85,9 +92,10 @@ fn append_removal(
     set: &mut HashSet<usize>,
     inradius: &mut HashSet<usize>,
     incidents: &Vec<Pair>,
-    radius: usize,
-    k: usize,
+    params: &GreedyParams,
 ) {
+    let radius = params.radius;
+    let k = params.k;
     if radius == 0 {
         // take the node with the highest number of incident path
         set.insert(incidents.iter().max_by_key(|pair| pair.1).unwrap().0);
@@ -95,30 +103,36 @@ fn append_removal(
     }
 
     let mut count = 0;
-    let mut excluded = 0;
+    let mut excluded = Vec::new();
     for node in incidents.iter() {
         if inradius.contains(&node.0) {
             // difference with previous insertion is that we only include
             // nodes NOT in the radius set
-            excluded += 1;
+            excluded.push(node);
             continue;
         }
         set.insert(node.0);
         update_radius_set(g, node.0, inradius, radius);
         count += 1;
-        /*        println!(*/
-        //"\t-> iteration {} : node {} inserted -> inradius {:?}",
-        //count, node.0, inradius,
-        /*);*/
+        println!(
+            "\t-> iteration {} : node {} inserted -> inradius {:?}",
+            count, node.0, inradius,
+        );
         if count == k {
             break;
         }
     }
-    // if we're still missing some nodes to remove, then take the
-    // the one with the maximum incident paths.
-    if count < k {
-        // FIXME: Sort `inradius` nodes by `incidents` and select
-        // the first `k-count` ones.
+    // If we didn't find any good candidates, that means the inradius set
+    // covers all the node already. In that case, we simply take the one
+    // with the maximum incident paths.
+    // We only take one node instead of k because this situation indicates
+    // we covered a large portion of the graph, therefore, the nodes
+    // added here don't add much value to S. For the sake of progressing in the
+    // algorithm, we still add one ( so we can have a different inradius at the
+    // next iteration).
+    if count == 0 && excluded.len() > 0 {
+        set.insert(excluded[0].0);
+        update_radius_set(g, excluded[0].0, inradius, radius);
     }
 
     let d = g.depth_exclude(&set);
@@ -187,19 +201,37 @@ fn update_radius_set(g: &Graph, node: usize, inradius: &mut HashSet<usize>, radi
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Eq)]
 struct Pair(usize, usize);
 
+impl Ord for Pair {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.1.cmp(&other.1)
+    }
+}
+
+impl PartialOrd for Pair {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for Pair {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0 && self.1 == other.1
+    }
+}
 // count_paths implements the CountPaths method in Algo. 5 for the greedy algorithm
 // It returns:
 // 1. the number of incident paths of the given length for each node.
 //      Index is the the index of the node, value is the paths count.
 // 2. the top k nodes indexes that have the higest incident paths
 //      The number of incident path is not given.
-fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize) -> (Vec<usize>, Vec<Pair>) {
+fn count_paths(g: &Graph, s: &HashSet<usize>, p: &GreedyParams) -> Vec<Pair> {
+    let length = p.length;
     // dimensions are [n][depth]
-    let mut ending_paths = vec![vec![0; length + 1]; g.cap()];
-    let mut starting_paths = vec![vec![0; length + 1]; g.cap()];
+    let mut ending_paths = vec![vec![0 as u64; length + 1]; g.cap()];
+    let mut starting_paths = vec![vec![0 as u64; length + 1]; g.cap()];
     // counting phase of all starting/ending paths of all length
 
     for node in 0..g.size() {
@@ -232,21 +264,16 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize) -> (Vec<usize>, Vec
     // Since topk is directly correlated to incidents[], we can compute both
     // at the same time and remove one O(n) iteration.
     g.for_each_node(|&node| {
-        incidents.push(Pair(node, (0..=length).map(|d| {
-            starting_paths[node][d] * ending_paths[node][length - d]
-        }).sum()));
+        incidents.push(Pair(
+            node,
+            (0..=length)
+                .map(|d| (starting_paths[node][d] * ending_paths[node][length - d]) as usize)
+                .sum(),
+        ));
     });
 
-    let incidents_return = incidents.iter().map(|pair| {pair.1}).collect();
-    incidents.sort_by_key(|pair| pair.1);
-    incidents.reverse();
-    // FIXME: Just to accommodate the current API convet `topk`
-    // from a tuple to a `Pair` (although this is too generic and
-    // doesn't add much value, if we want to keep it we should rework
-    // it to make it clear that the first element is a node and the
-    // second one is some sort of metric attached to it).
-
-    (incidents_return, incidents)
+    incidents.sort_by_key(|pair| Reverse(pair.1));
+    incidents
 }
 
 /// Implements the algorithm described in the Lemma 6.2 of the [AB16
@@ -413,8 +440,6 @@ mod test {
         ];
     }
 
-    // FIXME: Update test description with new standardize order of `topk`
-    // in `count_paths`.
     #[test]
     fn test_greedy() {
         let mut graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
@@ -424,6 +449,7 @@ mod test {
             radius: 0,
             length: 2,
             reset: false,
+            iter_topk: false,
         };
         let s = greedy_reduce(&mut graph, 2, params);
         assert_eq!(s, HashSet::from_iter(vec![3, 4]));
@@ -431,33 +457,36 @@ mod test {
             k: 1,
             radius: 1,
             length: 2,
-            reset: false,
+            reset: true,
+            iter_topk: false,
         };
         let s = greedy_reduce(&mut graph, 2, params);
-        // 1st iteration : counts = [5, 5, 7, 6, 7, 3]
-        // 2nd iteration : counts =  [2, 2, 0, 3, 3, 2]
-        // so first index 2 then index 3 (takes the minimum in the list)
-        assert_eq!(s, HashSet::from_iter(vec![3, 4]));
+        // + incidents [Pair(2, 7), Pair(4, 7), Pair(3, 6), Pair(0, 5), Pair(1, 5), Pair(5, 3)]
+        //         -> iteration 1 : node 2 inserted -> inradius {0, 3, 1, 2, 4}
+        //         -> added 1/6 nodes in |S| = 1, depth(G-S) = 4 = 0.667n
+        // + incidents [Pair(3, 3), Pair(4, 3), Pair(0, 2), Pair(1, 2), Pair(5, 2), Pair(2, 0)]
+        //         -> iteration 1 : node 3 inserted -> inradius {3, 1, 2, 4}
+        //         -> added 1/6 nodes in |S| = 2, depth(G-S) = 2 = 0.333n
+        //
+        assert_eq!(s, HashSet::from_iter(vec![2, 3]));
         println!("\n\n\n ------\n\n\n");
         let params = GreedyParams {
-            k: 2,
+            k: 1,
             radius: 1,
             reset: false,
             length: 2,
+            iter_topk: false,
         };
         let s = greedy_reduce(&mut graph, 2, params);
-        // main loop: depth 5 > 2
-        //         -> counts [5, 5, 7, 6, 7, 3]
-        //         -> iteration 1 : node 2 inserted -> inradius {2, 0, 1, 3, 4}
-        //         -> topk [Pair(2, 7), Pair(4, 7)]
-        //         -> added 1 nodes in S: {2}
-        // main loop: depth 4 > 2
-        //         -> counts [2, 2, 0, 3, 3, 2]
-        //         -> topk [Pair(3, 3), Pair(4, 3)]
-        //         -> added 1 nodes in S: {4, 2} <-- thanks to the rule
-        //         when all nodes are in the radius, we take the highest one
-        //         and max_by_key returns the latest.
-        assert_eq!(s, HashSet::from_iter(vec![2, 4]));
+        // incidents [Pair(2, 7), Pair(4, 7), Pair(3, 6), Pair(0, 5), Pair(1, 5), Pair(5, 3)]
+        //      -> iteration 1 : node 2 inserted -> inradius {3, 1, 4, 0, 2}
+        //      -> added 1/6 nodes in |S| = 1, depth(G-S) = 4 = 0.667n
+        // incidents [Pair(3, 3), Pair(4, 3), Pair(0, 2), Pair(1, 2), Pair(5, 2), Pair(2, 0)]
+        //      -> iteration 1 : node 5 inserted -> inradius {3, 1, 4, 5, 0, 2}
+        //      -> added 1/6 nodes in |S| = 2, depth(G-S) = 3 = 0.500n
+        // incidents [Pair(1, 2), Pair(3, 2), Pair(0, 1), Pair(4, 1), Pair(2, 0), Pair(5, 0)]
+        //
+        assert_eq!(s, HashSet::from_iter(vec![5, 2, 1]));
     }
 
     // FIXME: Update test description with new standardize order of `topk`
@@ -467,24 +496,34 @@ mod test {
         let mut graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
         graph.children_project();
         let mut s = HashSet::new();
-        let k = 3;
-        let target_length = 2;
-        let (_, topk) = count_paths(&graph, &s, target_length, k);
-        let radius = 0;
+        let mut params = GreedyParams {
+            k: 3,
+            length: 2,
+            radius: 0,
+            ..GreedyParams::default()
+        };
+        println!("graph: {:?}", graph);
+        let incidents = count_paths(&graph, &s, &params);
         let mut inradius = HashSet::new();
-        append_removal(&graph, &mut s, &mut inradius, &topk, radius);
-        assert!(s.contains(&2)); // 4 is valid but (2,7) is last
+        append_removal(&graph, &mut s, &mut inradius, &incidents, &params);
+        // incidents: [Pair(2, 7), Pair(4, 7), Pair(3, 6), Pair(0, 5), Pair(1, 5), Pair(5, 3)]
+        //  only one value since radius == 0
+        assert!(s.contains(&4));
 
-        let radius = 1;
-        let (counts, topk) = count_paths(&graph, &s, target_length, k);
-        println!("counts {:?}", counts);
-        append_removal(&graph, &mut s, &mut inradius, &topk, radius);
-        // counts [2, 2, 0, 3, 3, 2]
-        // -> topk [Pair(4, 3), Pair(1, 2), Pair(3, 3)]
-        // -> iteration 1 : node 4 inserted -> inradius {5, 0, 3, 2, 4}
-        // -> iteration 2 : node 1 inserted -> inradius {5, 0, 1, 3, 2, 4}
-        // 2 is there from the previous call to append_removal
-        assert_eq!(s, HashSet::from_iter(vec![2, 4]));
+        params.radius = 1;
+        let incidents = count_paths(&graph, &s, &params);
+        println!("incidents: {:?}", incidents);
+        append_removal(&graph, &mut s, &mut inradius, &incidents, &params);
+        println!("s contains: {:?}", s);
+
+        // [Pair(0, 3), Pair(1, 3), Pair(2, 3), Pair(3, 3), Pair(4, 0), Pair(5, 0)]
+        // -> iteration 1 : node 0 inserted -> inradius {1, 2, 0, 4}
+        // -> iteration 2 : node 3 inserted -> inradius {1, 2, 0, 4, 3}
+        // -> iteration 3 : node 5 inserted -> inradius {1, 5, 2, 0, 4, 3}
+        // NOTE:
+        //  - 4 is already present thanks to last call
+        //  - since radius = 0 before, we could insert 3 and 5 here as well.
+        assert_eq!(s, HashSet::from_iter(vec![4, 3, 0, 5]));
         // TODO probably more tests with larger graph
     }
 
@@ -507,15 +546,35 @@ mod test {
         let target_length = 2;
         // test with empty set to remove
         let mut s = HashSet::new();
-        let k = 3;
-        let (counts, topk) = count_paths(&graph, &s, target_length, k);
-        assert_eq!(counts, vec![5, 5, 7, 6, 7, 3]);
-        // order is irrelevant so we keep vec
-        assert_eq!(topk, vec![Pair(4, 7), Pair(2, 7), Pair(3, 6)]);
+        let p = GreedyParams {
+            k: 3,
+            length: 2,
+            ..GreedyParams::default()
+        };
+        let incidents = count_paths(&graph, &s, &p);
+        let mut exp = vec![
+            Pair(0, 5),
+            Pair(1, 5),
+            Pair(2, 7),
+            Pair(3, 6),
+            Pair(4, 7),
+            Pair(5, 3),
+        ];
+        exp.sort_by_key(|a| Reverse(a.1));
+
+        assert_eq!(incidents, exp);
         s.insert(4);
-        let (counts, topk) = count_paths(&graph, &s, target_length, k);
-        assert_eq!(counts, vec![3, 3, 3, 3, 0, 0]);
-        assert_eq!(topk, vec![Pair(3, 3), Pair(2, 3), Pair(1, 3)]);
+        let incidents = count_paths(&graph, &s, &p);
+        let mut exp = vec![
+            Pair(0, 3),
+            Pair(1, 3),
+            Pair(2, 3),
+            Pair(3, 3),
+            Pair(4, 0),
+            Pair(5, 0),
+        ];
+        exp.sort_by_key(|a| Reverse(a.1));
+        assert_eq!(incidents, exp);
     }
 
     #[test]
@@ -550,8 +609,17 @@ mod test {
                 //   in only one direction).
                 let expected_count = k.pow(length as u32) * (length + 1);
 
-                let (count, _) = count_paths(&g, &mut HashSet::new(), length, 1);
-                assert_eq!(count[g.size() / 2], expected_count);
+                let p = GreedyParams {
+                    k: 1,
+                    length: length,
+                    ..GreedyParams::default()
+                };
+                let incidents = count_paths(&g, &mut HashSet::new(), &p);
+                assert_eq!(
+                    // find the value which corresponds to the middle node
+                    incidents.iter().find(|&p| p.0 == g.size() / 2).unwrap().1,
+                    expected_count
+                );
                 // FIXME: Extend the check for more nodes in the center of the graph.
             }
         }
