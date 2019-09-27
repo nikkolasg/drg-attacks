@@ -61,15 +61,9 @@ fn greedy_reduce(g: &mut Graph, target: usize, p: GreedyParams) -> HashSet<usize
     let mut s = HashSet::new();
     g.children_project();
     let mut inradius: HashSet<usize> = HashSet::new();
-    let mut it = 0;
     while g.depth_exclude(&s) > target {
-        if it > 10 {
-            break;
-        }
-        it += 1;
         // TODO use p.length when more confidence in the trick
         let incidents = count_paths(g, &s, &p);
-        println!("+ incidents {:?}", incidents);
         append_removal(g, &mut s, &mut inradius, &incidents, &p);
 
         // TODO
@@ -96,6 +90,7 @@ fn append_removal(
 ) {
     let radius = params.radius;
     let k = params.k;
+    let iter = params.iter_topk;
     if radius == 0 {
         // take the node with the highest number of incident path
         set.insert(incidents.iter().max_by_key(|pair| pair.1).unwrap().0);
@@ -114,11 +109,19 @@ fn append_removal(
         set.insert(node.0);
         update_radius_set(g, node.0, inradius, radius);
         count += 1;
-        println!(
-            "\t-> iteration {} : node {} inserted -> inradius {:?}",
-            count, node.0, inradius,
-        );
-        if count == k {
+        /*println!(*/
+        //"\t-> iteration {} : node {} inserted -> inradius {:?}",
+        //count, node.0, inradius,
+        /*);*/
+        if iter {
+            // optim to add as much as possible nodes: goal is to add
+            // as much as possible k nodes to S in each iteration.
+            if count == k {
+                break;
+            }
+        } else if count + excluded == k {
+            // original behavior of the pseudo code from paper
+            // we stop when we looked at the first top k entries
             break;
         }
     }
@@ -139,7 +142,7 @@ fn append_removal(
     println!(
         "\t-> added {}/{} nodes in |S| = {}, depth(G-S) = {} = {:.3}n",
         count,
-        incidents.len(),
+        k,
         set.len(),
         d,
         (d as f32) / (g.cap() as f32)
