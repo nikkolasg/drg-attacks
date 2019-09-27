@@ -30,14 +30,14 @@ fn attack(g: &mut Graph, r: DepthReduceSet) {
 }
 
 fn porep_comparison() {
-    let fname = "porep.json";
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
-    let n = 20;
+    let n = 24;
     let size = (2 as usize).pow(n);
     println!("Comparison with porep short paper with n = {}", size);
-    let deg = 6;
+    let deg = 2;
+    let fname = format!("porep_n{}_d{}.json", n, deg);
 
-    let mut g1 = Graph::load_or_create(fname, size, random_bytes, DRGAlgo::MetaBucket(deg));
+    let mut g1 = Graph::load_or_create(&fname, size, random_bytes, DRGAlgo::MetaBucket(deg));
     //let mut g1 = Graph::new(size, random_bytes, DRGAlgo::MetaBucket(deg));
 
     let depth = (0.25 * (size as f32)) as usize;
@@ -68,6 +68,7 @@ fn porep_comparison() {
                 radius: 8,
                 length: 16,
                 reset: true,
+                iter_topk: false,
             },
         ),
     );
@@ -111,15 +112,19 @@ fn greedy_attacks() {
     //attack(&mut g1, DepthReduceSet::ValiantDepth(depth));
 
     let mut greed_params = GreedyParams {
-        k: 50,
+        k: 10,
         radius: 3,
         reset: true,
         // length influences the number of points taken from topk in one iteration
         // if it is too high, then too many nodes will be in the radius so we'll
         // only take the first entry in topk but not the rest (since they'll be in
         // the radius set)
-        length: 8,
+        length: 5,
+        iter_topk: true,
     };
+
+    attack(&mut g2, DepthReduceSet::Greedy(depth, greed_params.clone()));
+    greed_params.iter_topk = false;
     attack(&mut g2, DepthReduceSet::Greedy(depth, greed_params.clone()));
     attack(&mut g1, DepthReduceSet::Greedy(depth, greed_params.clone()));
     // k_ratio seems to give XXX
@@ -155,6 +160,7 @@ fn small_graph() {
                 radius: 0,
                 reset: false,
                 length: 16,
+                iter_topk: false,
             },
         ),
     );
@@ -162,6 +168,6 @@ fn small_graph() {
 
 fn main() {
     //small_graph();
-    //greedy_attacks();
-    porep_comparison();
+    greedy_attacks();
+    //porep_comparison();
 }
