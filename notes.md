@@ -163,6 +163,27 @@ even go further since the minimum to choose r is 2, so v - r <= v - 2 always.
 + Changing k doesn't seem to improve results but improve computation time when
   reducing k
 
+## Results
+
+// degree = 6, 2^24 -> (0.30n, 0.24n)
+graph stats: size=16777216, min parents=1, max children=25
+Trial #1 with target depth = 0.25n = 4194304
+Attack with ValiantDepth(4194304)
+        -> |S| = 4876295 = 0.2906n
+        -> depth(G-S) = 4072751 = 0.2428n
+        -> time elapsed: 862.685810048s
+
+
+graph created and saved at porep_n24_d2.json
+graph stats: size=16777216, min parents=2, max children=11
+Trial #1 with target depth = 0.25n = 4194304
+Attack with ValiantDepth(4194304)
+        -> |S| = 1361719 = 0.0812n
+        -> depth(G-S) = 3806177 = 0.2269n
+        -> time elapsed: 319.69523059s
+
+
+
 ## Comparisons
 
 In the [porep paper](https://web.stanford.edu/~bfisch/porep_short.pdf), figure
