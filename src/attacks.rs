@@ -103,12 +103,12 @@ fn append_removal(
     }
 
     let mut count = 0;
-    let mut excluded = Vec::new();
+    let mut excluded = 0;
     for node in incidents.iter() {
         if inradius.contains(&node.0) {
             // difference with previous insertion is that we only include
             // nodes NOT in the radius set
-            excluded.push(node);
+            excluded += 1;
             continue;
         }
         set.insert(node.0);
@@ -130,9 +130,9 @@ fn append_removal(
     // added here don't add much value to S. For the sake of progressing in the
     // algorithm, we still add one ( so we can have a different inradius at the
     // next iteration).
-    if count == 0 && excluded.len() > 0 {
-        set.insert(excluded[0].0);
-        update_radius_set(g, excluded[0].0, inradius, radius);
+    if count == 0 {
+        set.insert(incidents[0].0);
+        update_radius_set(g, incidents[0].0, inradius, radius);
     }
 
     let d = g.depth_exclude(&set);
