@@ -100,6 +100,18 @@ fn append_removal(
     let mut count = 0;
     let mut excluded = 0;
     for node in incidents.iter() {
+        if iter {
+            // optim to add as much as possible nodes: goal is to add
+            // as much as possible k nodes to S in each iteration.
+            if count == k {
+                break;
+            }
+        } else if count + excluded == k {
+            // original behavior of the pseudo code from paper
+            // we stop when we looked at the first top k entries
+            break;
+        }
+
         if inradius.contains(&node.0) {
             // difference with previous insertion is that we only include
             // nodes NOT in the radius set
@@ -113,17 +125,6 @@ fn append_removal(
         //"\t-> iteration {} : node {} inserted -> inradius {:?}",
         //count, node.0, inradius,
         /*);*/
-        if iter {
-            // optim to add as much as possible nodes: goal is to add
-            // as much as possible k nodes to S in each iteration.
-            if count == k {
-                break;
-            }
-        } else if count + excluded == k {
-            // original behavior of the pseudo code from paper
-            // we stop when we looked at the first top k entries
-            break;
-        }
     }
     // If we didn't find any good candidates, that means the inradius set
     // covers all the node already. In that case, we simply take the one
@@ -136,6 +137,7 @@ fn append_removal(
     if count == 0 {
         set.insert(incidents[0].0);
         update_radius_set(g, incidents[0].0, inradius, radius);
+        count += 1;
     }
 
     let d = g.depth_exclude(&set);
