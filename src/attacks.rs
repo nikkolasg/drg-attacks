@@ -57,14 +57,14 @@ fn greedy_reduce(g: &mut Graph, target: usize, p: GreedyParams) -> HashSet<usize
     while g.depth_exclude(&s) > target {
         // TODO use p.length when more confidence in the trick
         //let (_, topk) = count_paths(g, &s, target, p.k);
-        let (counts, topk) = count_paths(g, &s, p.length, p.k);
+        let (counts, incidents) = count_paths(g, &s, p.length);
         /*println!(*/
         //"main loop: depth {} > {}\n\t-> counts.len {:?}",
         //g.depth_exclude(&s),
         //target,
         //counts.len(),
         /*);*/
-        append_removal(g, &mut s, &mut inradius, &topk, p.radius);
+        append_removal(g, &mut s, &mut inradius, &incidents, p.radius, p.k);
         // TODO
         // 1. Find what should be the normal behavior: clearing or continue
         // updating the inradius set
@@ -84,18 +84,19 @@ fn append_removal(
     g: &Graph,
     set: &mut HashSet<usize>,
     inradius: &mut HashSet<usize>,
-    topk: &Vec<Pair>,
+    incidents: &Vec<Pair>,
     radius: usize,
+    k: usize,
 ) {
     if radius == 0 {
         // take the node with the highest number of incident path
-        set.insert(topk.iter().max_by_key(|pair| pair.1).unwrap().0);
+        set.insert(incidents.iter().max_by_key(|pair| pair.1).unwrap().0);
         return;
     }
 
     let mut count = 0;
     let mut excluded = 0;
-    for node in topk.iter() {
+    for node in incidents.iter() {
         if inradius.contains(&node.0) {
             // difference with previous insertion is that we only include
             // nodes NOT in the radius set
@@ -109,20 +110,22 @@ fn append_removal(
         //"\t-> iteration {} : node {} inserted -> inradius {:?}",
         //count, node.0, inradius,
         /*);*/
+        if count == k {
+            break;
+        }
     }
-    // if all nodes are already in the radius set, then take the
+    // if we're still missing some nodes to remove, then take the
     // the one with the maximum incident paths.
-    if count == 0 {
-        let node = &topk.iter().max_by_key(|n| n.1).unwrap();
-        set.insert(node.0);
-        update_radius_set(g, node.0, inradius, radius);
+    if count < k {
+        // FIXME: Sort `inradius` nodes by `incidents` and select
+        // the first `k-count` ones.
     }
 
     let d = g.depth_exclude(&set);
     println!(
         "\t-> added {}/{} nodes in |S| = {}, depth(G-S) = {} = {:.3}n",
         count,
-        topk.len(),
+        incidents.len(),
         set.len(),
         d,
         (d as f32) / (g.cap() as f32)
@@ -193,7 +196,7 @@ struct Pair(usize, usize);
 //      Index is the the index of the node, value is the paths count.
 // 2. the top k nodes indexes that have the higest incident paths
 //      The number of incident path is not given.
-fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize, k: usize) -> (Vec<usize>, Vec<Pair>) {
+fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize) -> (Vec<usize>, Vec<Pair>) {
     // dimensions are [n][depth]
     let mut ending_paths = vec![vec![0; length + 1]; g.cap()];
     let mut starting_paths = vec![vec![0; length + 1]; g.cap()];
@@ -237,14 +240,13 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, length: usize, k: usize) -> (Vec<u
     let incidents_return = incidents.iter().map(|pair| {pair.1}).collect();
     incidents.sort_by_key(|pair| pair.1);
     incidents.reverse();
-    let topk: Vec<Pair> = incidents[..k].to_vec();
     // FIXME: Just to accommodate the current API convet `topk`
     // from a tuple to a `Pair` (although this is too generic and
     // doesn't add much value, if we want to keep it we should rework
     // it to make it clear that the first element is a node and the
     // second one is some sort of metric attached to it).
 
-    (incidents_return, topk)
+    (incidents_return, incidents)
 }
 
 /// Implements the algorithm described in the Lemma 6.2 of the [AB16
