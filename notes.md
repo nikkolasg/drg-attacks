@@ -198,6 +198,17 @@ opk: false })
         -> time elapsed: 38.19792473s
 
 
+---
+graph created and saved at porep_n20_d5.json
+graph stats: size=1048576, min parents=1, max children=20
+Trial #1 with target depth = 0.25n = 262144
+Attack with ValiantDepth(262144)
+	-> |S| = 295265 = 0.2816n
+	-> depth(G-S) = 227680 = 0.2171n
+	-> time elapsed: 35.231161026s
+Trial #4 with Greedy DRS, target depth = 0.25n = 262144
+
+
 ## Comparisons
 
 In the [porep paper](https://web.stanford.edu/~bfisch/porep_short.pdf), figure

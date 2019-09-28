@@ -125,7 +125,7 @@ fn append_removal(
             "\t-> iteration {} : node {} inserted -> inradius {:?}",
             count + excluded,
             node.0,
-            inradius,
+            inradius.len(),
         );
     }
     // If we didn't find any good candidates, that means the inradius set

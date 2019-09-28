@@ -34,7 +34,7 @@ fn porep_comparison() {
     let n = 20;
     let size = (2 as usize).pow(n);
     println!("Comparison with porep short paper with n = {}", size);
-    let deg = 2;
+    let deg = 5;
     let fname = format!("porep_n{}_d{}.json", n, deg);
 
     let mut g1 = Graph::load_or_create(&fname, size, random_bytes, DRGAlgo::MetaBucket(deg));
