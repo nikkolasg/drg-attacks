@@ -69,6 +69,7 @@ fn porep_comparison() {
                 length: 16,
                 reset: true,
                 iter_topk: true,
+                ..GreedyParams::default()
             },
         ),
     );
@@ -114,17 +115,21 @@ fn greedy_attacks() {
 
     let mut greed_params = GreedyParams {
         k: GreedyParams::k_ratio(n as usize),
-        radius: 5,
+        radius: 4,
         reset: true,
         // length influences the number of points taken from topk in one iteration
         // if it is too high, then too many nodes will be in the radius so we'll
         // only take the first entry in topk but not the rest (since they'll be in
         // the radius set)
-        length: 16,
+        length: 8,
         iter_topk: true,
+        use_degree: false,
     };
 
     attack(&mut g1, DepthReduceSet::Greedy(depth, greed_params.clone()));
+    greed_params.use_degree = true;
+    attack(&mut g1, DepthReduceSet::Greedy(depth, greed_params.clone()));
+
     greed_params.iter_topk = false;
     attack(&mut g2, DepthReduceSet::Greedy(depth, greed_params.clone()));
     attack(&mut g1, DepthReduceSet::Greedy(depth, greed_params.clone()));
@@ -162,6 +167,7 @@ fn small_graph() {
                 reset: false,
                 length: 16,
                 iter_topk: false,
+                ..GreedyParams::default()
             },
         ),
     );
