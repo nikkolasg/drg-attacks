@@ -34,7 +34,7 @@ fn porep_comparison() {
     let n = 20;
     let size = (2 as usize).pow(n);
     println!("Comparison with porep short paper with n = {}", size);
-    let deg = 5;
+    let deg = 6;
     let fname = format!("porep_n{}_d{}.json", n, deg);
 
     let mut g1 = Graph::load_or_create(&fname, size, random_bytes, DRGAlgo::MetaBucket(deg));
@@ -43,7 +43,7 @@ fn porep_comparison() {
     let depth = (0.25 * (size as f32)) as usize;
     println!("{}", g1.stats());
     println!("Trial #1 with target depth = 0.25n = {}", depth);
-    attack(&mut g1, DepthReduceSet::ValiantDepth(depth));
+    //attack(&mut g1, DepthReduceSet::ValiantDepth(depth));
 
     //let set_size = (0.30 * (size as f32)) as usize;
     //println!(
@@ -65,10 +65,10 @@ fn porep_comparison() {
             depth,
             GreedyParams {
                 k: GreedyParams::k_ratio(n as usize),
-                radius: 8,
+                radius: 5,
                 length: 16,
                 reset: true,
-                iter_topk: false,
+                iter_topk: true,
             },
         ),
     );
@@ -99,7 +99,8 @@ fn greedy_attacks() {
     println!("DRG graph generation");
     let fname = "greedy.json";
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
-    let size = (2 as usize).pow(12);
+    let n = 20;
+    let size = (2 as usize).pow(n);
     let deg = 6;
     let depth = (0.25 * size as f64) as usize;
     let mut g1 = Graph::load_or_create(fname, size, random_bytes, DRGAlgo::MetaBucket(deg));
@@ -112,18 +113,18 @@ fn greedy_attacks() {
     //attack(&mut g1, DepthReduceSet::ValiantDepth(depth));
 
     let mut greed_params = GreedyParams {
-        k: 10,
-        radius: 3,
+        k: GreedyParams::k_ratio(n as usize),
+        radius: 5,
         reset: true,
         // length influences the number of points taken from topk in one iteration
         // if it is too high, then too many nodes will be in the radius so we'll
         // only take the first entry in topk but not the rest (since they'll be in
         // the radius set)
-        length: 5,
+        length: 16,
         iter_topk: true,
     };
 
-    attack(&mut g2, DepthReduceSet::Greedy(depth, greed_params.clone()));
+    attack(&mut g1, DepthReduceSet::Greedy(depth, greed_params.clone()));
     greed_params.iter_topk = false;
     attack(&mut g2, DepthReduceSet::Greedy(depth, greed_params.clone()));
     attack(&mut g1, DepthReduceSet::Greedy(depth, greed_params.clone()));
@@ -168,6 +169,6 @@ fn small_graph() {
 
 fn main() {
     //small_graph();
-    //greedy_attacks();
-    porep_comparison();
+    greedy_attacks();
+    //porep_comparison();
 }

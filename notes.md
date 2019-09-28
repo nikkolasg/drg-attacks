@@ -199,6 +199,7 @@ opk: false })
 
 
 ---
+master - "latest tests" 
 graph created and saved at porep_n20_d5.json
 graph stats: size=1048576, min parents=1, max children=20
 Trial #1 with target depth = 0.25n = 262144
@@ -207,6 +208,15 @@ Attack with ValiantDepth(262144)
 	-> depth(G-S) = 227680 = 0.2171n
 	-> time elapsed: 35.231161026s
 Trial #4 with Greedy DRS, target depth = 0.25n = 262144
+
+graph created and saved at porep_n20_d6.json
+graph stats: size=1048576, min parents=1, max children=22
+Trial #1 with target depth = 0.25n = 262144
+Attack with ValiantDepth(262144)
+	-> |S| = 343263 = 0.3274n
+	-> depth(G-S) = 242762 = 0.2315n
+	-> time elapsed: 46.823593713s
+
 
 
 ## Comparisons
@@ -220,3 +230,57 @@ points.  One point used to characterize the depth robustness of the graph is
 
 + Compare for the same e, the depth you find, and for the same depth, the length
   of e you find.
+
+
+
+### Optimization to compute incidents paths
+
+```rust
+
+    ntr = node to remove
+    for parents in node.parents() {
+        for d in 0..d {
+            starting_paths[parent][d] -= starting_paths[ntr][d-1]
+        }
+    }
+    for child in node.children() {
+        for d in 0..d {
+            ending_paths[child][d] -= ending_paths[ntr][d-1]
+        }
+    }
+
+// SUM (0 -> length) (start[n][d] - (x1 = SUM(ctr: children TO REMOVE) start[ctr][d-1])
+                \* (end[n][d] - (y1 = SUM(ptr: parents TO REMOVE) end[ptr][d-1]))
+
+// from A = a1*b1 + a2*b2 + ... TO
+// ([a1 - x1]* [b1 - y1]) + ([a2 - x2]* [b2 - y2]) * ...
+// (a1*b1 - a1*y1 -x1*b1 - x1*y1) + (...)
+// A - (x1(b1+y1) + a1) - (x2(b2 + y2) + a2) - .... 
+// A - 
+    
+--------
+    for d in 1..=length {
+        g.for_each_edge(|e| {
+            // checking each parents (vs only checking direct + 1parent in C#)
+            // no ending path for node i if the parent is contained in S
+            // since G - S doesn't have this parent
+            if !s.contains(&e.parent) {
+                ending_paths[e.child][d] += ending_paths[e.parent][d - 1];
+
+                // difference vs the pseudo code: like in C#, increase parent count
+                // instead of iterating over children of node i
+                starting_paths[e.parent][d] += starting_paths[e.child][d - 1];
+            }
+        });
+    }
+
+    let mut incidents = Vec::with_capacity(g.size());
+    g.for_each_node(|&node| {
+        incidents.push(Pair(
+            node,
+            (0..=length)
+                .map(|d| (starting_paths[node][d] * ending_paths[node][length - d]) as usize)
+                .sum(),
+        ));
+    });
+```
