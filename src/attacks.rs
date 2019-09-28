@@ -121,10 +121,12 @@ fn append_removal(
         set.insert(node.0);
         update_radius_set(g, node.0, inradius, radius);
         count += 1;
-        /*println!(*/
-        //"\t-> iteration {} : node {} inserted -> inradius {:?}",
-        //count, node.0, inradius,
-        /*);*/
+        println!(
+            "\t-> iteration {} : node {} inserted -> inradius {:?}",
+            count + excluded,
+            node.0,
+            inradius,
+        );
     }
     // If we didn't find any good candidates, that means the inradius set
     // covers all the node already. In that case, we simply take the one
@@ -135,6 +137,7 @@ fn append_removal(
     // algorithm, we still add one ( so we can have a different inradius at the
     // next iteration).
     if count == 0 {
+        println!("\t-> added by default one node {}", incidents[0].0);
         set.insert(incidents[0].0);
         update_radius_set(g, incidents[0].0, inradius, radius);
         count += 1;
@@ -147,7 +150,7 @@ fn append_removal(
         k,
         set.len(),
         d,
-        (d as f32) / (g.cap() as f32)
+        (d as f32) / (g.cap() as f32),
     );
 }
 
@@ -483,15 +486,14 @@ mod test {
             iter_topk: false,
         };
         let s = greedy_reduce(&mut graph, 2, params);
-        // incidents [Pair(2, 7), Pair(4, 7), Pair(3, 6), Pair(0, 5), Pair(1, 5), Pair(5, 3)]
-        //      -> iteration 1 : node 2 inserted -> inradius {3, 1, 4, 0, 2}
-        //      -> added 1/6 nodes in |S| = 1, depth(G-S) = 4 = 0.667n
-        // incidents [Pair(3, 3), Pair(4, 3), Pair(0, 2), Pair(1, 2), Pair(5, 2), Pair(2, 0)]
-        //      -> iteration 1 : node 5 inserted -> inradius {3, 1, 4, 5, 0, 2}
-        //      -> added 1/6 nodes in |S| = 2, depth(G-S) = 3 = 0.500n
-        // incidents [Pair(1, 2), Pair(3, 2), Pair(0, 1), Pair(4, 1), Pair(2, 0), Pair(5, 0)]
+        // iteration 1: incidents [Pair(2, 7), Pair(4, 7), Pair(3, 6), Pair(0, 5), Pair(1, 5), Pair(5, 3)]
+        // -> iteration 1 : node 2 inserted -> inradius {0, 3, 1, 4, 2}
+        // -> added 1/1 nodes in |S| = 1, depth(G-S) = 4 = 0.667n
+        // Iteration 2: [Pair(3, 3), Pair(4, 3), Pair(0, 2), Pair(1, 2), Pair(5, 2), Pair(2, 0)]
+        // -> added by default one node 3
+        // -> added 1/1 nodes in |S| = 2, depth(G-S) = 2 = 0.333n
         //
-        assert_eq!(s, HashSet::from_iter(vec![5, 2, 1]));
+        assert_eq!(s, HashSet::from_iter(vec![3, 2]));
     }
 
     // FIXME: Update test description with new standardize order of `topk`
@@ -523,12 +525,11 @@ mod test {
 
         // [Pair(0, 3), Pair(1, 3), Pair(2, 3), Pair(3, 3), Pair(4, 0), Pair(5, 0)]
         // -> iteration 1 : node 0 inserted -> inradius {1, 2, 0, 4}
-        // -> iteration 2 : node 3 inserted -> inradius {1, 2, 0, 4, 3}
-        // -> iteration 3 : node 5 inserted -> inradius {1, 5, 2, 0, 4, 3}
+        //      - no other added since 0,1,2 makes k iteration
+        //          "old behavior" only loops k times
         // NOTE:
         //  - 4 is already present thanks to last call
-        //  - since radius = 0 before, we could insert 3 and 5 here as well.
-        assert_eq!(s, HashSet::from_iter(vec![4, 3, 0, 5]));
+        assert_eq!(s, HashSet::from_iter(vec![4, 0]));
         // TODO probably more tests with larger graph
     }
 

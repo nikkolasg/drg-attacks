@@ -31,7 +31,7 @@ fn attack(g: &mut Graph, r: DepthReduceSet) {
 
 fn porep_comparison() {
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
-    let n = 24;
+    let n = 20;
     let size = (2 as usize).pow(n);
     println!("Comparison with porep short paper with n = {}", size);
     let deg = 2;
@@ -168,6 +168,6 @@ fn small_graph() {
 
 fn main() {
     //small_graph();
-    greedy_attacks();
-    //porep_comparison();
+    //greedy_attacks();
+    porep_comparison();
 }
