@@ -272,6 +272,9 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, p: &GreedyParams) -> Vec<Pair> {
     // Since topk is directly correlated to incidents[], we can compute both
     // at the same time and remove one O(n) iteration.
     g.for_each_node(|&node| {
+        if s.contains(&node) {
+            return;
+        }
         incidents.push(Pair(
             node,
             (0..=length)
@@ -571,14 +574,7 @@ mod test {
         assert_eq!(incidents, exp);
         s.insert(4);
         let incidents = count_paths(&graph, &s, &p);
-        let mut exp = vec![
-            Pair(0, 3),
-            Pair(1, 3),
-            Pair(2, 3),
-            Pair(3, 3),
-            Pair(4, 0),
-            Pair(5, 0),
-        ];
+        let mut exp = vec![Pair(0, 3), Pair(1, 3), Pair(2, 3), Pair(3, 3), Pair(5, 0)];
         exp.sort_by_key(|a| Reverse(a.1));
         assert_eq!(incidents, exp);
     }
