@@ -14,7 +14,9 @@ pub enum DepthReduceSet {
     /// Parameter  is size of the resulting G-S graph desired
     ValiantAB16(usize),
     /// depth of the resulting G-S graph and some specific parameters
-    Greedy(usize, GreedyParams),
+    GreedyDepth(usize, GreedyParams),
+    /// Variation of Greedy attack that has as `target` the resulting size of set S.
+    GreedySize(usize, GreedyParams),
 }
 
 pub fn depth_reduce(g: &mut Graph, drs: DepthReduceSet) -> HashSet<usize> {
@@ -22,7 +24,8 @@ pub fn depth_reduce(g: &mut Graph, drs: DepthReduceSet) -> HashSet<usize> {
         DepthReduceSet::ValiantDepth(_) => valiant_reduce(g, drs),
         DepthReduceSet::ValiantSize(_) => valiant_reduce(g, drs),
         DepthReduceSet::ValiantAB16(_) => valiant_reduce(g, drs),
-        DepthReduceSet::Greedy(target, p) => greedy_reduce(g, target, p),
+        DepthReduceSet::GreedyDepth(_, _) => greedy_reduce(g, drs),
+        DepthReduceSet::GreedySize(_, _) => greedy_reduce(g, drs),
     }
 }
 
@@ -57,11 +60,38 @@ impl GreedyParams {
 }
 
 // greedy_reduce implements the Algorithm 5 of https://eprint.iacr.org/2018/944.pdf
-fn greedy_reduce(g: &mut Graph, target: usize, p: GreedyParams) -> HashSet<usize> {
+fn greedy_reduce(g: &mut Graph, d: DepthReduceSet) -> HashSet<usize> {
+    match d {
+        DepthReduceSet::GreedyDepth(depth, p) => {
+            greedy_reduce_main(g, p, &|set: &HashSet<usize>, g: &mut Graph| {
+                g.depth_exclude(set) > depth
+            })
+        }
+        DepthReduceSet::GreedySize(size, p) => {
+            // FIXME: To hit exactly the `target_size` we should consider the number of nodes
+            //  removed in each iteration (`GreedyParams::k`), but since that number is small
+            //  compared to normal target sizes it is an acceptable bias for now. We only
+            //  correct `k` if it's bigger than 1/100th the target size.
+            let mut p = p.clone();
+            p.k = std::cmp::min(p.k, (size as f32 * 0.01).ceil() as usize);
+
+            greedy_reduce_main(g, p, &|set: &HashSet<usize>, g: &mut Graph| {
+                set.len() < size
+            })
+        }
+        _ => panic!("invalid DepthReduceSet option"),
+    }
+}
+
+fn greedy_reduce_main(
+    g: &mut Graph,
+    p: GreedyParams,
+    f: &Fn(&HashSet<usize>, &mut Graph) -> bool,
+) -> HashSet<usize> {
     let mut s = HashSet::new();
     g.children_project();
     let mut inradius: HashSet<usize> = HashSet::new();
-    while g.depth_exclude(&s) > target {
+    while f(&s, g) {
         // TODO use p.length when more confidence in the trick
         let incidents = count_paths(g, &s, &p);
         append_removal(g, &mut s, &mut inradius, &incidents, &p);
@@ -121,12 +151,12 @@ fn append_removal(
         set.insert(node.0);
         update_radius_set(g, node.0, inradius, radius);
         count += 1;
-        println!(
-            "\t-> iteration {} : node {} inserted -> inradius {:?}",
-            count + excluded,
-            node.0,
-            inradius.len(),
-        );
+        // println!(
+        //     "\t-> iteration {} : node {} inserted -> inradius {:?}",
+        //     count + excluded,
+        //     node.0,
+        //     inradius.len(),
+        // );
     }
     // If we didn't find any good candidates, that means the inradius set
     // covers all the node already. In that case, we simply take the one
@@ -137,21 +167,21 @@ fn append_removal(
     // algorithm, we still add one ( so we can have a different inradius at the
     // next iteration).
     if count == 0 {
-        println!("\t-> added by default one node {}", incidents[0].0);
+        // println!("\t-> added by default one node {}", incidents[0].0);
         set.insert(incidents[0].0);
         update_radius_set(g, incidents[0].0, inradius, radius);
         count += 1;
     }
 
     let d = g.depth_exclude(&set);
-    println!(
-        "\t-> added {}/{} nodes in |S| = {}, depth(G-S) = {} = {:.3}n",
-        count,
-        k,
-        set.len(),
-        d,
-        (d as f32) / (g.cap() as f32),
-    );
+    // println!(
+    //     "\t-> added {}/{} nodes in |S| = {}, depth(G-S) = {} = {:.3}n",
+    //     count,
+    //     k,
+    //     set.len(),
+    //     d,
+    //     (d as f32) / (g.cap() as f32),
+    // );
 }
 
 // update_radius_set fills the given inradius set with nodes that inside a radius
@@ -459,7 +489,7 @@ mod test {
             reset: false,
             iter_topk: false,
         };
-        let s = greedy_reduce(&mut graph, 2, params);
+        let s = greedy_reduce(&mut graph, DepthReduceSet::GreedyDepth(2, params));
         assert_eq!(s, HashSet::from_iter(vec![3, 4]));
         let params = GreedyParams {
             k: 1,
@@ -468,7 +498,7 @@ mod test {
             reset: true,
             iter_topk: false,
         };
-        let s = greedy_reduce(&mut graph, 2, params);
+        let s = greedy_reduce(&mut graph, DepthReduceSet::GreedyDepth(2, params));
         // + incidents [Pair(2, 7), Pair(4, 7), Pair(3, 6), Pair(0, 5), Pair(1, 5), Pair(5, 3)]
         //         -> iteration 1 : node 2 inserted -> inradius {0, 3, 1, 2, 4}
         //         -> added 1/6 nodes in |S| = 1, depth(G-S) = 4 = 0.667n
@@ -485,7 +515,7 @@ mod test {
             length: 2,
             iter_topk: false,
         };
-        let s = greedy_reduce(&mut graph, 2, params);
+        let s = greedy_reduce(&mut graph, DepthReduceSet::GreedyDepth(2, params));
         // iteration 1: incidents [Pair(2, 7), Pair(4, 7), Pair(3, 6), Pair(0, 5), Pair(1, 5), Pair(5, 3)]
         // -> iteration 1 : node 2 inserted -> inradius {0, 3, 1, 4, 2}
         // -> added 1/1 nodes in |S| = 1, depth(G-S) = 4 = 0.667n
