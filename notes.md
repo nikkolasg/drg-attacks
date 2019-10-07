@@ -216,7 +216,17 @@ Attack with ValiantDepth(262144)
 	-> |S| = 343263 = 0.3274n
 	-> depth(G-S) = 242762 = 0.2315n
 	-> time elapsed: 46.823593713s
+---------------------
+Greedy attacks tests with size = 1048576, depth(G-S) <= 262144
+Attack with Greedy(262144, GreedyParams { k: 800, radius: 4, length: 8, reset: true, iter_topk: true, use_degree: false })
+	-> |S| = 235200 = 0.2243n
+	-> depth(G-S) = 261760 = 0.2496n
+	-> time elapsed: 45369.448506162s
 
+Attack with Greedy(262144, GreedyParams { k: 800, radius: 4, length: 8, reset: true, iter_topk: true, use_degree: true })
+	-> |S| = 251200 = 0.2396n
+	-> depth(G-S) = 260755 = 0.2487n
+	-> time elapsed: 20630.204970272s
 
 
 ## Comparisons
