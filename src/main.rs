@@ -61,7 +61,7 @@ fn porep_comparison() {
     println!("Trial #4 with Greedy DRS, target depth = 0.25n = {}", depth);
     attack(
         &mut g1,
-        DepthReduceSet::Greedy(
+        DepthReduceSet::GreedySize(
             depth,
             GreedyParams {
                 k: GreedyParams::k_ratio(n as usize),
@@ -102,12 +102,12 @@ fn greedy_attacks() {
     let n = 20;
     let size = (2 as usize).pow(n);
     let deg = 6;
-    let depth = (0.25 * size as f64) as usize;
+    let target_size = (0.30 * size as f64) as usize;
     let mut g1 = Graph::load_or_create(fname, size, random_bytes, DRGAlgo::MetaBucket(deg));
     let mut g2 = Graph::load_or_create(fname, size, random_bytes, DRGAlgo::BucketSample);
     println!(
-        "Greedy attacks tests with size = {}, depth(G-S) <= {}",
-        size, depth
+        "Greedy attacks tests with size = {}, target set S size <= {}",
+        size, target_size
     );
 
     //attack(&mut g1, DepthReduceSet::ValiantDepth(depth));
@@ -124,22 +124,26 @@ fn greedy_attacks() {
         iter_topk: true,
     };
 
+<<<<<<< HEAD
     attack(&mut g1, DepthReduceSet::Greedy(depth, greed_params.clone()));
+=======
+    attack(&mut g2, DepthReduceSet::GreedySize(target_size, greed_params.clone()));
+>>>>>>> 15176489f0dc4a508a1bd4fd496171032de9f02a
     greed_params.iter_topk = false;
-    attack(&mut g2, DepthReduceSet::Greedy(depth, greed_params.clone()));
-    attack(&mut g1, DepthReduceSet::Greedy(depth, greed_params.clone()));
+    attack(&mut g2, DepthReduceSet::GreedySize(target_size, greed_params.clone()));
+    attack(&mut g1, DepthReduceSet::GreedySize(target_size, greed_params.clone()));
     // k_ratio seems to give XXX
     greed_params.k = 300; // normally 2^(n-18)/2 * 400 -> take the minimum and reduce
-    attack(&mut g1, DepthReduceSet::Greedy(depth, greed_params.clone()));
+    attack(&mut g1, DepthReduceSet::GreedySize(target_size, greed_params.clone()));
     // reset seems to give a slightly worse result
     greed_params.reset = false;
-    attack(&mut g1, DepthReduceSet::Greedy(depth, greed_params.clone()));
+    attack(&mut g1, DepthReduceSet::GreedySize(target_size, greed_params.clone()));
     // higher radius seems to give XXX
     greed_params.radius = 8;
-    attack(&mut g1, DepthReduceSet::Greedy(depth, greed_params.clone()));
+    attack(&mut g1, DepthReduceSet::GreedySize(target_size, greed_params.clone()));
     // higher length seems to give XXX
     greed_params.length = 32;
-    attack(&mut g1, DepthReduceSet::Greedy(depth, greed_params.clone()));
+    attack(&mut g1, DepthReduceSet::GreedySize(target_size, greed_params.clone()));
 }
 
 fn small_graph() {
@@ -154,7 +158,7 @@ fn small_graph() {
 
     attack(
         &mut g1,
-        DepthReduceSet::Greedy(
+        DepthReduceSet::GreedySize(
             depth,
             GreedyParams {
                 k: 1,
@@ -168,6 +172,8 @@ fn small_graph() {
 }
 
 fn main() {
+    pretty_env_logger::init_timed();
+
     //small_graph();
     greedy_attacks();
     //porep_comparison();
