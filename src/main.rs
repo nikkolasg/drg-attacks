@@ -1,33 +1,13 @@
 mod attacks;
 pub mod graph;
 mod utils;
-use attacks::{depth_reduce, DepthReduceSet, GreedyParams};
+use attacks::{attack, depth_reduce, DepthReduceSet, GreedyParams};
 use graph::{DRGAlgo, Graph};
 use rand::Rng;
-use std::time::Instant;
 
 // used by test module...
 #[macro_use]
 extern crate lazy_static;
-
-fn attack(g: &mut Graph, r: DepthReduceSet) {
-    println!("Attack with {:?}", r);
-    let start = Instant::now();
-    let set = depth_reduce(g, r);
-    let duration = start.elapsed();
-    let depth = g.depth_exclude(&set);
-    println!(
-        "\t-> |S| = {} = {:.4}n",
-        set.len(),
-        (set.len() as f32) / (g.cap() as f32)
-    );
-    println!(
-        "\t-> depth(G-S) = {} = {:.4}n",
-        depth,
-        (depth as f32) / (g.cap() as f32)
-    );
-    println!("\t-> time elapsed: {:?}", duration);
-}
 
 fn porep_comparison() {
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();

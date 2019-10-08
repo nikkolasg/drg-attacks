@@ -1,5 +1,6 @@
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BinaryHeap, HashSet};
+use std::time::Instant;
 
 use log::{debug, trace};
 
@@ -29,6 +30,25 @@ pub fn depth_reduce(g: &mut Graph, drs: DepthReduceSet) -> HashSet<usize> {
         DepthReduceSet::GreedyDepth(_, _) => greedy_reduce(g, drs),
         DepthReduceSet::GreedySize(_, _) => greedy_reduce(g, drs),
     }
+}
+
+pub fn attack(g: &mut Graph, r: DepthReduceSet) {
+    println!("Attack with {:?}", r);
+    let start = Instant::now();
+    let set = depth_reduce(g, r);
+    let duration = start.elapsed();
+    let depth = g.depth_exclude(&set);
+    println!(
+        "\t-> |S| = {} = {:.4}n",
+        set.len(),
+        (set.len() as f32) / (g.cap() as f32)
+    );
+    println!(
+        "\t-> depth(G-S) = {} = {:.4}n",
+        depth,
+        (depth as f32) / (g.cap() as f32)
+    );
+    println!("\t-> time elapsed: {:?}", duration);
 }
 
 // GreedyParams holds the different parameters to choose for the greedy algorithm
