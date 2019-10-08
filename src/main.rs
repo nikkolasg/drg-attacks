@@ -167,6 +167,8 @@ fn small_graph() {
 }
 
 fn main() {
+    pretty_env_logger::init_timed();
+
     //small_graph();
     greedy_attacks();
     // porep_comparison();
