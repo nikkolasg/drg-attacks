@@ -1,6 +1,8 @@
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BinaryHeap, HashSet};
 
+use log::{debug, trace};
+
 use crate::graph::{DRGAlgo, Edge, Graph};
 use crate::utils;
 
@@ -151,12 +153,12 @@ fn append_removal(
         set.insert(node.0);
         update_radius_set(g, node.0, inradius, radius);
         count += 1;
-        // println!(
-        //     "\t-> iteration {} : node {} inserted -> inradius {:?}",
-        //     count + excluded,
-        //     node.0,
-        //     inradius.len(),
-        // );
+        debug!(
+            "\t-> iteration {} : node {} inserted -> inradius {:?}",
+            count + excluded,
+            node.0,
+            inradius.len(),
+        );
     }
     // If we didn't find any good candidates, that means the inradius set
     // covers all the node already. In that case, we simply take the one
@@ -167,21 +169,21 @@ fn append_removal(
     // algorithm, we still add one ( so we can have a different inradius at the
     // next iteration).
     if count == 0 {
-        // println!("\t-> added by default one node {}", incidents[0].0);
+        debug!("\t-> added by default one node {}", incidents[0].0);
         set.insert(incidents[0].0);
         update_radius_set(g, incidents[0].0, inradius, radius);
         count += 1;
     }
 
     let d = g.depth_exclude(&set);
-    // println!(
-    //     "\t-> added {}/{} nodes in |S| = {}, depth(G-S) = {} = {:.3}n",
-    //     count,
-    //     k,
-    //     set.len(),
-    //     d,
-    //     (d as f32) / (g.cap() as f32),
-    // );
+    debug!(
+        "\t-> added {}/{} nodes in |S| = {}, depth(G-S) = {} = {:.3}n",
+        count,
+        k,
+        set.len(),
+        d,
+        (d as f32) / (g.cap() as f32),
+    );
 }
 
 // update_radius_set fills the given inradius set with nodes that inside a radius
@@ -210,12 +212,12 @@ fn update_radius_set(g: &Graph, node: usize, inradius: &mut HashSet<usize>, radi
             .for_each(|&child| {
                 closests.insert(child);
             });
-        /*println!(*/
-        //"\t add_direct node {}: at most {} parents and {} children",
-        //v,
-        //g.parents()[v].len(),
-        //g.children()[v].len()
-        /*);*/
+        trace!(
+            "\t add_direct node {}: at most {} parents and {} children",
+            v,
+            g.parents()[v].len(),
+            g.children()[v].len()
+        );
     };
     // insert first the given node and then add the close nodes
     inradius.insert(node);
@@ -230,12 +232,12 @@ fn update_radius_set(g: &Graph, node: usize, inradius: &mut HashSet<usize>, radi
         }
         tosearch = closests.clone();
         inradius.extend(closests);
-        /*println!(*/
-        //"update radius {}: {} new nodes, total {}",
-        //i,
-        //tosearch.len(),
-        //inradius.len()
-        /*);*/
+        trace!(
+            "update radius {}: {} new nodes, total {}",
+            i,
+            tosearch.len(),
+            inradius.len()
+        );
     }
 }
 
@@ -349,23 +351,23 @@ fn valiant_ab16(g: &Graph, target: usize) -> HashSet<usize> {
             .iter()
             .map(|edge| edge.parent)
             .collect::<HashSet<usize>>();
-        /*        println!(*/
-        //"m/k = {}/{} = {}, chosen = {:?}, new_depth {}, curr.depth() {}, curr.dpeth_exclude {}, new edges {}, si {:?}",
-        //mi,
-        //ki,
-        //max_size,
-        //chosen,
-        //new_depth,
-        //curr.depth(),
-        //curr.depth_exclude(&si),
-        //curr.count_edges(),
-        //si,
-        /*);*/
+        trace!(
+        "m/k = {}/{} = {}, chosen = {:?}, new_depth {}, curr.depth() {}, curr.dpeth_exclude {}, new edges {}, si {:?}",
+        mi,
+        ki,
+        max_size,
+        chosen,
+        new_depth,
+        curr.depth(),
+        curr.depth_exclude(&si),
+        curr.count_edges(),
+        si,
+        );
         curr = curr.remove(&si);
         s.extend(si);
 
         if curr.depth() <= target {
-            //println!("\t -> breaking out, depth(G-S) = {}", g.depth_exclude(&s));
+            trace!("\t -> breaking out, depth(G-S) = {}", g.depth_exclude(&s));
             break;
         }
     }
