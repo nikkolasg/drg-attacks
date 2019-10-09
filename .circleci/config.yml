@@ -5,12 +5,4 @@ jobs:
         - image: circleci/rust:latest
     steps:
       - checkout
-      - run: 
-            name: "testing"
-            command: cargo test
-workflows:
-  version: 2
-  build_and_test:
-    jobs:
-      - build
-      - test
+      - cargo test
