@@ -1,7 +1,7 @@
 mod attacks;
 pub mod graph;
 mod utils;
-use attacks::{attack, DepthReduceSet, GreedyParams};
+use attacks::{attack, attack_with_profile, AttackProfile, DepthReduceSet, GreedyParams};
 use graph::{DRGAlgo, Graph};
 use rand::Rng;
 
@@ -79,7 +79,7 @@ fn greedy_attacks() {
     println!("DRG graph generation");
     let fname = "greedy.json";
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
-    let size = (2 as usize).pow(12);
+    let size = (2 as usize).pow(6);
     let deg = 6;
     let target_size = (0.30 * size as f64) as usize;
     let mut g1 = Graph::load_or_create(fname, size, random_bytes, DRGAlgo::MetaBucket(deg));
@@ -103,9 +103,16 @@ fn greedy_attacks() {
         iter_topk: true,
     };
 
-    attack(
+    let mut profile = AttackProfile::from_attack(DepthReduceSet::GreedySize(target_size, greed_params.clone()), g2.size());
+    // FIXME: Build the profile in one statement instead of making it mutable.
+    profile.runs = 3;
+    profile.range.start = 0.2;
+    profile.range.end = 0.5;
+    profile.range.interval = 0.1;
+
+    attack_with_profile(
         &mut g2,
-        DepthReduceSet::GreedySize(target_size, greed_params.clone()),
+        profile,
     );
 
     // FIXME: Figure out what to do with all these variations, the current

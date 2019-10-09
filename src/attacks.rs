@@ -10,7 +10,7 @@ use crate::utils;
 // FIXME: This name is no longer representative, we no longer attack using
 //  depth as a target, we also have a size target now. This should be renamed
 //  to something more generic like `AttackType`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum DepthReduceSet {
     /// depth of the resulting G-S graph desired
     ValiantDepth(usize),
@@ -40,6 +40,9 @@ pub fn depth_reduce(g: &mut Graph, drs: DepthReduceSet) -> HashSet<usize> {
 /// we want to hit a target as close as possible as those thresholds). All
 /// targets are specified in relation to the size of the graph `G` (not to
 /// be confused with the target size of set `S`).
+// FIXME: Overlapping with `DepthReduceSet` internal values, this should
+//  replace that.
+#[derive(Debug)]
 pub enum AttackTarget {
     Depth(f64),
     Size(f64),
@@ -47,17 +50,22 @@ pub enum AttackTarget {
 
 /// Range of targets to try (to find the optimum value) from `start`, increasing
 /// by `interval` until `end` is reached or surpassed.
+// FIXME: Using this instead of `std::ops::Range<f64>` because Rust correctly
+//  doesn't allow iterating over floating point values but there is probably
+//  an easier way than coding this from scratch.
+// FIXME: Assert range validity in the struct itself instead of on the caller
+//  (`attack`).
 pub struct TargetRange {
-    start: f64,
-    interval: f64,
-    end: f64,
+    pub start: f64,
+    pub interval: f64,
+    pub end: f64,
 }
 
 pub struct AttackProfile {
-    runs: usize,
-    target: AttackTarget,
-    range: TargetRange,
-    attack: DepthReduceSet,
+    pub runs: usize,
+    pub target: AttackTarget,
+    pub range: TargetRange,
+    pub attack: DepthReduceSet,
 }
 
 impl AttackProfile {
@@ -102,24 +110,81 @@ impl AttackProfile {
     }
 }
 
-pub fn attack(g: &mut Graph, attack: DepthReduceSet) {
-    let profile = AttackProfile::from_attack(attack, g.size());
-    println!("Attack with {:?}", profile.attack);
+/// Results of an attack expressed in relation to the graph size.
+#[derive(Clone, Default)]
+pub struct SingleAttackResult {
+    depth: f64,
+    exclusion_size: f64,
+    // graph_size: usize,
+    // FIXME: Do we care to know the absolute number or just
+    // relative to the graph size?
+}
+
+impl std::fmt::Display for SingleAttackResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "\t-> |S| = {:.4}\n\t-> depth(G-S) = {:.4}",
+            self.exclusion_size, self.depth,
+        )
+    }
+}
+
+pub fn attack(g: &mut Graph, attack: DepthReduceSet) -> SingleAttackResult {
     let start = Instant::now();
-    let set = depth_reduce(g, profile.attack);
+    let set = depth_reduce(g, attack);
     let duration = start.elapsed();
     let depth = g.depth_exclude(&set);
-    println!(
-        "\t-> |S| = {} = {:.4}n",
-        set.len(),
-        (set.len() as f32) / (g.cap() as f32)
-    );
-    println!(
-        "\t-> depth(G-S) = {} = {:.4}n",
-        depth,
-        (depth as f32) / (g.cap() as f32)
-    );
+    let result = SingleAttackResult {
+        depth: depth as f64 / g.size() as f64,
+        exclusion_size: set.len() as f64 / g.size() as f64,
+    };
+    println!("{}", result);
     println!("\t-> time elapsed: {:?}", duration);
+    result
+}
+
+// FIXME: Eventually this should replace the old `attack`.
+pub fn attack_with_profile(g: &mut Graph, profile: AttackProfile) {
+    let mut targets: Vec<f64> = Vec::new();
+    let mut target = profile.range.start;
+    loop {
+        targets.push(target);
+        target += profile.range.interval;
+        if target >= profile.range.end {
+            break;
+        }
+    }
+    // FIXME: Move this logic to `TargetRange`.
+
+    let mut results: Vec<Vec<SingleAttackResult>> =
+        vec![vec![SingleAttackResult::default(); profile.runs]; targets.len()];
+
+    for (t, target) in targets.iter().enumerate() {
+        let absolute_target = (target * g.size() as f64) as usize;
+        let attack_type = match profile.attack.clone() {
+            DepthReduceSet::ValiantDepth(_) => DepthReduceSet::ValiantDepth(absolute_target),
+            DepthReduceSet::ValiantSize(_) => DepthReduceSet::ValiantSize(absolute_target),
+            DepthReduceSet::ValiantAB16(_) => DepthReduceSet::ValiantAB16(absolute_target),
+            DepthReduceSet::GreedyDepth(_, p) => DepthReduceSet::GreedyDepth(absolute_target, p),
+            DepthReduceSet::GreedySize(_, p) => DepthReduceSet::GreedySize(absolute_target, p),
+        };
+        // FIXME: Same as before, the target should be decoupled from the type of attack.
+
+        for run in 0..profile.runs {
+            // FIXME: Should we create a new graph for different runs? Or targets?
+
+            println!(
+                "Attack (run {}) target ({:?} = {}), with {:?}",
+                run, profile.target, target, attack_type
+            );
+            results[t][run] = attack(g, attack_type.clone());
+        }
+    }
+
+    // FIXME: Define how to process and output results, e.g., average across runs
+    //  and take best result across different targets. Should we then output here
+    //  a single result or an entire array or a combination (best + all)?
 }
 
 // GreedyParams holds the different parameters to choose for the greedy algorithm
