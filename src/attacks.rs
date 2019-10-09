@@ -565,11 +565,11 @@ mod test {
             reset: true,
             use_degree: false,
         };
-        let set1 = greedy_reduce(&mut g3, depth, params.clone());
+        let set1 = greedy_reduce(&mut g3, DepthReduceSet::GreedyDepth(depth, params.clone()));
 
         assert!(g3.depth_exclude(&set1) < depth);
         params.use_degree = true;
-        let set2 = greedy_reduce(&mut g3, depth, params.clone());
+        let set2 = greedy_reduce(&mut g3, DepthReduceSet::GreedyDepth(depth, params.clone()));
         assert!(g3.depth_exclude(&set2) < depth);
     }
 
