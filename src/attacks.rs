@@ -5,6 +5,8 @@ use std::time::Instant;
 use log::{debug, trace};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
+use serde::{Deserialize, Serialize};
+use serde_json::Result;
 
 use crate::graph::{DRGAlgo, Edge, Graph, GraphSpec};
 use crate::utils;
@@ -115,7 +117,7 @@ impl AttackProfile {
 }
 
 /// Results of an attack expressed in relation to the graph size.
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct SingleAttackResult {
     depth: f64,
     exclusion_size: f64,
@@ -139,20 +141,33 @@ impl<'a> std::iter::Sum<&'a Self> for SingleAttackResult {
 /// Average of many `SingleAttackResult`s.
 // FIXME: Should be turn into a more generalized structure that also
 //  has the variance along with the mean using a specialized crate.
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct AveragedAttackResult {
+    // for log/output purpose
+    target: f64,
     mean_depth: f64,
     mean_size: f64,
 }
 
 impl AveragedAttackResult {
-    pub fn from_results(results: Vec<SingleAttackResult>) -> Self {
+    pub fn from_results(target: f64, results: &[SingleAttackResult]) -> Self {
         let aggregated: SingleAttackResult = results.iter().sum();
         AveragedAttackResult {
             mean_depth: aggregated.depth / results.len() as f64,
             mean_size: aggregated.exclusion_size / results.len() as f64,
+            target: target,
         }
     }
+}
+
+/// Struct containing all informations about the attack runs. It can be
+/// serialized into JSON or other format with serde.
+#[derive(Serialize, Deserialize)]
+pub struct AttackResults {
+    results: Vec<AveragedAttackResult>,
+    // FIXME: should be able to add the target sizes corresponding to a result
+    // but dont necessarily want to embed target inside averaged results.
+    // Best would be to associate the DepthReduceSet enum directly.
 }
 
 impl std::fmt::Display for SingleAttackResult {
@@ -180,7 +195,7 @@ pub fn attack(g: &mut Graph, attack: DepthReduceSet) -> SingleAttackResult {
 }
 
 // FIXME: Eventually this should replace the old `attack`.
-pub fn attack_with_profile(spec: GraphSpec, profile: AttackProfile) {
+pub fn attack_with_profile(spec: GraphSpec, profile: &AttackProfile) -> AttackResults {
     let mut targets: Vec<f64> = Vec::new();
     let mut target = profile.range.start;
     loop {
@@ -220,16 +235,12 @@ pub fn attack_with_profile(spec: GraphSpec, profile: AttackProfile) {
         }
     }
 
-    let average_results: Vec<AveragedAttackResult> = results
-        .iter()
-        .map(|target_results| AveragedAttackResult::from_results(target_results.to_vec()))
-        .collect();
-
-    // FIXME: Turn this into a JSON output.
-    println!("\n\n------------------");
-    println!("Attack finished: {:?}", profile);
-    for (t, target) in targets.iter().enumerate() {
-        println!("Target {:?}: {:?}", target, average_results[t]);
+    AttackResults {
+        results: targets
+            .iter()
+            .enumerate()
+            .map(|(i, &target)| AveragedAttackResult::from_results(target, &results[i]))
+            .collect(),
     }
 }
 

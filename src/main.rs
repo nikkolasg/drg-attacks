@@ -4,6 +4,7 @@ mod utils;
 use attacks::{attack, attack_with_profile, AttackProfile, DepthReduceSet, GreedyParams};
 use graph::{DRGAlgo, Graph, GraphSpec};
 use rand::Rng;
+use serde_json::Result;
 use std::env;
 // used by test module...
 #[macro_use]
@@ -112,7 +113,12 @@ fn greedy_attacks() {
     profile.range.end = 0.5;
     profile.range.interval = 0.1;
 
-    attack_with_profile(spec, profile);
+    let res = attack_with_profile(spec, &profile);
+    // FIXME: Turn this into a JSON output.
+    println!("\n\n------------------");
+    println!("Attack finished: {:?}", profile);
+    let json = serde_json::to_string_pretty(&res).expect("can't serialize to json");
+    println!("{}", json);
 }
 
 fn main() {
