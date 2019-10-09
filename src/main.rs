@@ -121,6 +121,44 @@ fn greedy_attacks() {
     println!("{}", json);
 }
 
+fn baseline() {
+    println!("Baseline computation for target size [0.10,0.20,0.30]");
+    let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
+    let n = 20;
+    let size = (2 as usize).pow(n);
+    let deg = 6;
+    let target_size = (0.30 * size as f64) as usize;
+    let spec = GraphSpec {
+        size,
+        seed: random_bytes,
+        algo: DRGAlgo::MetaBucket(deg),
+    };
+
+    let mut greed_params = GreedyParams {
+        k: GreedyParams::k_ratio(n as usize),
+        radius: 4,
+        reset: true,
+        length: 10,
+        iter_topk: true,
+        use_degree: false,
+    };
+
+    let mut profile = AttackProfile::from_attack(
+        DepthReduceSet::GreedyDepth(target_size, greed_params.clone()),
+        size,
+    );
+    profile.runs = 3;
+    profile.range.start = 0.10;
+    profile.range.end = 0.31;
+    profile.range.interval = 0.10;
+
+    let res = attack_with_profile(spec, &profile);
+    println!("\n\n------------------");
+    println!("Attack finished: {:?}", profile);
+    let json = serde_json::to_string_pretty(&res).expect("can't serialize to json");
+    println!("{}", json);
+}
+
 fn main() {
     pretty_env_logger::init_timed();
     let args: Vec<String> = env::args().collect();
@@ -128,6 +166,7 @@ fn main() {
         match args[1].to_lowercase().trim() {
             "greedy" => greedy_attacks(),
             "porep" => porep_comparison(),
+            "baseline" => baseline(),
             _ => panic!("command not understood: choose greedy or porep"),
         }
     } else {

@@ -14,7 +14,7 @@ use crate::utils;
 // FIXME: This name is no longer representative, we no longer attack using
 //  depth as a target, we also have a size target now. This should be renamed
 //  to something more generic like `AttackType`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DepthReduceSet {
     /// depth of the resulting G-S graph desired
     ValiantDepth(usize),
@@ -165,9 +165,7 @@ impl AveragedAttackResult {
 #[derive(Serialize, Deserialize)]
 pub struct AttackResults {
     results: Vec<AveragedAttackResult>,
-    // FIXME: should be able to add the target sizes corresponding to a result
-    // but dont necessarily want to embed target inside averaged results.
-    // Best would be to associate the DepthReduceSet enum directly.
+    attack: DepthReduceSet,
 }
 
 impl std::fmt::Display for SingleAttackResult {
@@ -236,6 +234,7 @@ pub fn attack_with_profile(spec: GraphSpec, profile: &AttackProfile) -> AttackRe
     }
 
     AttackResults {
+        attack: profile.attack.clone(),
         results: targets
             .iter()
             .enumerate()
@@ -246,7 +245,7 @@ pub fn attack_with_profile(spec: GraphSpec, profile: &AttackProfile) -> AttackRe
 
 // GreedyParams holds the different parameters to choose for the greedy algorithm
 // such as the radius from which to delete nodes and the heuristic length.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GreedyParams {
     // how many k nodes do we "remove" at each iteration in append_removal
     pub k: usize,
