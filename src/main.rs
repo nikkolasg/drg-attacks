@@ -4,7 +4,7 @@ mod utils;
 use attacks::{attack, attack_with_profile, AttackProfile, DepthReduceSet, GreedyParams};
 use graph::{DRGAlgo, Graph, GraphSpec};
 use rand::Rng;
-
+use std::env;
 // used by test module...
 #[macro_use]
 extern crate lazy_static;
@@ -14,7 +14,7 @@ fn porep_comparison() {
     let n = 20;
     let size = (2 as usize).pow(n);
     println!("Comparison with porep short paper with n = {}", size);
-    let deg = 5;
+    let deg = 6;
     let fname = format!("porep_n{}_d{}.json", n, deg);
 
     let mut g1 = Graph::load_or_create(&fname, size, random_bytes, DRGAlgo::MetaBucket(deg));
@@ -23,7 +23,7 @@ fn porep_comparison() {
     let depth = (0.25 * (size as f32)) as usize;
     println!("{}", g1.stats());
     println!("Trial #1 with target depth = 0.25n = {}", depth);
-    attack(&mut g1, DepthReduceSet::ValiantDepth(depth));
+    //attack(&mut g1, DepthReduceSet::ValiantDepth(depth));
 
     //let set_size = (0.30 * (size as f32)) as usize;
     //println!(
@@ -45,10 +45,11 @@ fn porep_comparison() {
             depth,
             GreedyParams {
                 k: GreedyParams::k_ratio(n as usize),
-                radius: 8,
+                radius: 5,
                 length: 16,
                 reset: true,
-                iter_topk: false,
+                iter_topk: true,
+                ..GreedyParams::default()
             },
         ),
     );
@@ -76,32 +77,29 @@ fn porep_comparison() {
 
 fn greedy_attacks() {
     println!("Greedy Attacks parameters");
-    println!("DRG graph generation");
-    let fname = "greedy.json";
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
-    let size = (2 as usize).pow(6);
+    let n = 10;
+    let size = (2 as usize).pow(n);
     let deg = 6;
     let target_size = (0.30 * size as f64) as usize;
-    // let mut g1 = Graph::load_or_create(fname, size, random_bytes, DRGAlgo::MetaBucket(deg));
-    // let mut g2 = Graph::load_or_create(fname, size, random_bytes, DRGAlgo::BucketSample);
     let spec = GraphSpec {
         size,
         seed: random_bytes,
         algo: DRGAlgo::MetaBucket(deg),
     };
-
     //attack(&mut g1, DepthReduceSet::ValiantDepth(depth));
 
     let mut greed_params = GreedyParams {
-        k: 10,
-        radius: 3,
+        k: 50,
+        radius: 4,
         reset: true,
         // length influences the number of points taken from topk in one iteration
         // if it is too high, then too many nodes will be in the radius so we'll
         // only take the first entry in topk but not the rest (since they'll be in
         // the radius set)
-        length: 5,
+        length: 8,
         iter_topk: true,
+        use_degree: false,
     };
 
     let mut profile = AttackProfile::from_attack(
@@ -115,75 +113,18 @@ fn greedy_attacks() {
     profile.range.interval = 0.1;
 
     attack_with_profile(spec, profile);
-
-    // FIXME: Figure out what to do with all these variations, the current
-    //  `AttackProfile` doesn't contemplate them, we always run the *same*
-    //   attack (we change the targets only).
-    //
-    // greed_params.iter_topk = false;
-    // attack(
-    //     &mut g2,
-    //     DepthReduceSet::GreedySize(target_size, greed_params.clone()),
-    // );
-    // attack(
-    //     &mut g1,
-    //     DepthReduceSet::GreedySize(target_size, greed_params.clone()),
-    // );
-    // // k_ratio seems to give XXX
-    // greed_params.k = 300; // normally 2^(n-18)/2 * 400 -> take the minimum and reduce
-    // attack(
-    //     &mut g1,
-    //     DepthReduceSet::GreedySize(target_size, greed_params.clone()),
-    // );
-    // // reset seems to give a slightly worse result
-    // greed_params.reset = false;
-    // attack(
-    //     &mut g1,
-    //     DepthReduceSet::GreedySize(target_size, greed_params.clone()),
-    // );
-    // // higher radius seems to give XXX
-    // greed_params.radius = 8;
-    // attack(
-    //     &mut g1,
-    //     DepthReduceSet::GreedySize(target_size, greed_params.clone()),
-    // );
-    // // higher length seems to give XXX
-    // greed_params.length = 32;
-    // attack(
-    //     &mut g1,
-    //     DepthReduceSet::GreedySize(target_size, greed_params.clone()),
-    // );
-}
-
-fn small_graph() {
-    println!("Large graph scenario");
-    println!("DRG graph generation");
-    let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
-    let size = 100;
-    let deg = 4;
-    let depth = 25;
-    let mut g1 = Graph::new(size, random_bytes, DRGAlgo::MetaBucket(deg));
-    attack(&mut g1, DepthReduceSet::ValiantDepth(depth));
-
-    attack(
-        &mut g1,
-        DepthReduceSet::GreedySize(
-            depth,
-            GreedyParams {
-                k: 1,
-                radius: 0,
-                reset: false,
-                length: 16,
-                iter_topk: false,
-            },
-        ),
-    );
 }
 
 fn main() {
     pretty_env_logger::init_timed();
-
-    //small_graph();
-    greedy_attacks();
-    // porep_comparison();
+    let args: Vec<String> = env::args().collect();
+    if args.len() > 1 {
+        match args[1].to_lowercase().trim() {
+            "greedy" => greedy_attacks(),
+            "porep" => porep_comparison(),
+            _ => panic!("command not understood: choose greedy or porep"),
+        }
+    } else {
+        porep_comparison();
+    }
 }

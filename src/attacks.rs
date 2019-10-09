@@ -254,6 +254,10 @@ pub struct GreedyParams {
     // test field: when set, the topk nodes are selected one by one, updating the
     // radius set for each selected node.
     pub iter_topk: bool,
+
+    // when set to true, greedy counts the degree of a node as
+    // an indicator of its number of incident path
+    pub use_degree: bool,
 }
 
 impl GreedyParams {
@@ -470,6 +474,9 @@ impl PartialEq for Pair {
 // 2. the top k nodes indexes that have the higest incident paths
 //      The number of incident path is not given.
 fn count_paths(g: &Graph, s: &HashSet<usize>, p: &GreedyParams) -> Vec<Pair> {
+    if p.use_degree {
+        return count_paths_degree(g, s, p);
+    }
     let length = p.length;
     // dimensions are [n][depth]
     let mut ending_paths = vec![vec![0 as u64; length + 1]; g.cap()];
@@ -506,6 +513,9 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, p: &GreedyParams) -> Vec<Pair> {
     // Since topk is directly correlated to incidents[], we can compute both
     // at the same time and remove one O(n) iteration.
     g.for_each_node(|&node| {
+        if s.contains(&node) {
+            return;
+        }
         incidents.push(Pair(
             node,
             (0..=length)
@@ -518,6 +528,22 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, p: &GreedyParams) -> Vec<Pair> {
     incidents
 }
 
+fn count_paths_degree(g: &Graph, s: &HashSet<usize>, p: &GreedyParams) -> Vec<Pair> {
+    let mut v = Vec::with_capacity(g.size() - s.len());
+    g.for_each_node(|&node| {
+        if s.contains(&node) {
+            return;
+        }
+        let nc = g.children()[node]
+            .iter()
+            .filter(|&p| !s.contains(p))
+            .count();
+        let np = g.parents()[node].iter().filter(|&p| !s.contains(p)).count();
+        v.push(Pair(node, nc + np));
+    });
+    v.sort_by_key(|a| Reverse(a.1));
+    return v;
+}
 /// Implements the algorithm described in the Lemma 6.2 of the [AB16
 /// paper](https://eprint.iacr.org/2016/115.pdf).
 /// For a graph G with m edges, 2^k vertices, and \delta in-ground degree,
@@ -653,6 +679,7 @@ mod test {
 
     use super::super::graph;
     use super::*;
+    use rand::Rng;
     use std::iter::FromIterator;
 
     static TEST_SIZE: usize = 20;
@@ -690,8 +717,7 @@ mod test {
             k: 1,
             radius: 0,
             length: 2,
-            reset: false,
-            iter_topk: false,
+            ..GreedyParams::default()
         };
         let s = greedy_reduce(&mut graph, DepthReduceSet::GreedyDepth(2, params));
         assert_eq!(s, HashSet::from_iter(vec![3, 4]));
@@ -700,7 +726,7 @@ mod test {
             radius: 1,
             length: 2,
             reset: true,
-            iter_topk: false,
+            ..GreedyParams::default()
         };
         let s = greedy_reduce(&mut graph, DepthReduceSet::GreedyDepth(2, params));
         // + incidents [Pair(2, 7), Pair(4, 7), Pair(3, 6), Pair(0, 5), Pair(1, 5), Pair(5, 3)]
@@ -717,7 +743,7 @@ mod test {
             radius: 1,
             reset: false,
             length: 2,
-            iter_topk: false,
+            ..GreedyParams::default()
         };
         let s = greedy_reduce(&mut graph, DepthReduceSet::GreedyDepth(2, params));
         // iteration 1: incidents [Pair(2, 7), Pair(4, 7), Pair(3, 6), Pair(0, 5), Pair(1, 5), Pair(5, 3)]
@@ -728,6 +754,25 @@ mod test {
         // -> added 1/1 nodes in |S| = 2, depth(G-S) = 2 = 0.333n
         //
         assert_eq!(s, HashSet::from_iter(vec![3, 2]));
+
+        let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
+        let size = (2 as usize).pow(10);
+        let depth = (0.25 * size as f32) as usize;
+        let mut g3 = Graph::new(size, random_bytes, DRGAlgo::MetaBucket(3));
+        let mut params = GreedyParams {
+            k: 30,
+            length: 8,
+            radius: 2,
+            iter_topk: true,
+            reset: true,
+            use_degree: false,
+        };
+        let set1 = greedy_reduce(&mut g3, depth, params.clone());
+
+        assert!(g3.depth_exclude(&set1) < depth);
+        params.use_degree = true;
+        let set2 = greedy_reduce(&mut g3, depth, params.clone());
+        assert!(g3.depth_exclude(&set2) < depth);
     }
 
     // FIXME: Update test description with new standardize order of `topk`
@@ -805,14 +850,7 @@ mod test {
         assert_eq!(incidents, exp);
         s.insert(4);
         let incidents = count_paths(&graph, &s, &p);
-        let mut exp = vec![
-            Pair(0, 3),
-            Pair(1, 3),
-            Pair(2, 3),
-            Pair(3, 3),
-            Pair(4, 0),
-            Pair(5, 0),
-        ];
+        let mut exp = vec![Pair(0, 3), Pair(1, 3), Pair(2, 3), Pair(3, 3), Pair(5, 0)];
         exp.sort_by_key(|a| Reverse(a.1));
         assert_eq!(incidents, exp);
     }
