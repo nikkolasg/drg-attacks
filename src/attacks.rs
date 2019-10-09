@@ -7,6 +7,9 @@ use log::{debug, trace};
 use crate::graph::{DRGAlgo, Edge, Graph};
 use crate::utils;
 
+// FIXME: This name is no longer representative, we no longer attack using
+//  depth as a target, we also have a size target now. This should be renamed
+//  to something more generic like `AttackType`.
 #[derive(Debug)]
 pub enum DepthReduceSet {
     /// depth of the resulting G-S graph desired
@@ -32,10 +35,78 @@ pub fn depth_reduce(g: &mut Graph, drs: DepthReduceSet) -> HashSet<usize> {
     }
 }
 
-pub fn attack(g: &mut Graph, r: DepthReduceSet) {
-    println!("Attack with {:?}", r);
+/// Target of an attack, either the depth should be smaller than `Depth` or
+/// the exclusion set `S` should have a size bigger than `Size` (actually
+/// we want to hit a target as close as possible as those thresholds). All
+/// targets are specified in relation to the size of the graph `G` (not to
+/// be confused with the target size of set `S`).
+pub enum AttackTarget {
+    Depth(f64),
+    Size(f64),
+}
+
+/// Range of targets to try (to find the optimum value) from `start`, increasing
+/// by `interval` until `end` is reached or surpassed.
+pub struct TargetRange {
+    start: f64,
+    interval: f64,
+    end: f64,
+}
+
+pub struct AttackProfile {
+    runs: usize,
+    target: AttackTarget,
+    range: TargetRange,
+    attack: DepthReduceSet,
+}
+
+impl AttackProfile {
+    /// Build a default profile from an attack type that has only one run
+    /// in a range of a single value (to make it compatible with previous
+    /// uses of `attack`).
+    // FIXME: We shouldn't need the `graph_size` (or the graph for that
+    // matter), but this is accommodating previous uses of `attack` (which
+    // should be refactored entirely and this method removed or reworked).
+    pub fn from_attack(attack: DepthReduceSet, graph_size: usize) -> Self {
+        let graph_size = graph_size as f64;
+        let target = match attack {
+            DepthReduceSet::ValiantDepth(depth) => AttackTarget::Depth(depth as f64 / graph_size),
+            DepthReduceSet::ValiantSize(size) => AttackTarget::Size(size as f64 / graph_size),
+            DepthReduceSet::ValiantAB16(size) => AttackTarget::Size(size as f64 / graph_size),
+            DepthReduceSet::GreedyDepth(depth, _) => AttackTarget::Depth(depth as f64 / graph_size),
+            DepthReduceSet::GreedySize(size, _) => AttackTarget::Size(size as f64 / graph_size),
+        };
+        // FIXME: This code should absorb the `depth_reduce` and derived
+        // functions logic. The target discrimination depth/size should
+        // b independent of the attack type (valiant/greedy).
+
+        let range = {
+            let single_value = match target {
+                AttackTarget::Depth(depth) => depth,
+                AttackTarget::Size(size) => size,
+            };
+            // FIXME: Too verbose, there probably is a more concise way to do this.
+            TargetRange {
+                start: single_value,
+                end: single_value,
+                interval: 0.0,
+            }
+        };
+
+        AttackProfile {
+            runs: 1,
+            target,
+            range,
+            attack,
+        }
+    }
+}
+
+pub fn attack(g: &mut Graph, attack: DepthReduceSet) {
+    let profile = AttackProfile::from_attack(attack, g.size());
+    println!("Attack with {:?}", profile.attack);
     let start = Instant::now();
-    let set = depth_reduce(g, r);
+    let set = depth_reduce(g, profile.attack);
     let duration = start.elapsed();
     let depth = g.depth_exclude(&set);
     println!(

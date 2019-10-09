@@ -1,7 +1,7 @@
 mod attacks;
 pub mod graph;
 mod utils;
-use attacks::{attack, depth_reduce, DepthReduceSet, GreedyParams};
+use attacks::{attack, DepthReduceSet, GreedyParams};
 use graph::{DRGAlgo, Graph};
 use rand::Rng;
 
@@ -107,39 +107,44 @@ fn greedy_attacks() {
         &mut g2,
         DepthReduceSet::GreedySize(target_size, greed_params.clone()),
     );
-    greed_params.iter_topk = false;
-    attack(
-        &mut g2,
-        DepthReduceSet::GreedySize(target_size, greed_params.clone()),
-    );
-    attack(
-        &mut g1,
-        DepthReduceSet::GreedySize(target_size, greed_params.clone()),
-    );
-    // k_ratio seems to give XXX
-    greed_params.k = 300; // normally 2^(n-18)/2 * 400 -> take the minimum and reduce
-    attack(
-        &mut g1,
-        DepthReduceSet::GreedySize(target_size, greed_params.clone()),
-    );
-    // reset seems to give a slightly worse result
-    greed_params.reset = false;
-    attack(
-        &mut g1,
-        DepthReduceSet::GreedySize(target_size, greed_params.clone()),
-    );
-    // higher radius seems to give XXX
-    greed_params.radius = 8;
-    attack(
-        &mut g1,
-        DepthReduceSet::GreedySize(target_size, greed_params.clone()),
-    );
-    // higher length seems to give XXX
-    greed_params.length = 32;
-    attack(
-        &mut g1,
-        DepthReduceSet::GreedySize(target_size, greed_params.clone()),
-    );
+
+    // FIXME: Figure out what to do with all these variations, the current
+    //  `AttackProfile` doesn't contemplate them, we always run the *same*
+    //   attack (we change the targets only).
+    //
+    // greed_params.iter_topk = false;
+    // attack(
+    //     &mut g2,
+    //     DepthReduceSet::GreedySize(target_size, greed_params.clone()),
+    // );
+    // attack(
+    //     &mut g1,
+    //     DepthReduceSet::GreedySize(target_size, greed_params.clone()),
+    // );
+    // // k_ratio seems to give XXX
+    // greed_params.k = 300; // normally 2^(n-18)/2 * 400 -> take the minimum and reduce
+    // attack(
+    //     &mut g1,
+    //     DepthReduceSet::GreedySize(target_size, greed_params.clone()),
+    // );
+    // // reset seems to give a slightly worse result
+    // greed_params.reset = false;
+    // attack(
+    //     &mut g1,
+    //     DepthReduceSet::GreedySize(target_size, greed_params.clone()),
+    // );
+    // // higher radius seems to give XXX
+    // greed_params.radius = 8;
+    // attack(
+    //     &mut g1,
+    //     DepthReduceSet::GreedySize(target_size, greed_params.clone()),
+    // );
+    // // higher length seems to give XXX
+    // greed_params.length = 32;
+    // attack(
+    //     &mut g1,
+    //     DepthReduceSet::GreedySize(target_size, greed_params.clone()),
+    // );
 }
 
 fn small_graph() {
