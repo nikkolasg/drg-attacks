@@ -2,7 +2,7 @@ mod attacks;
 pub mod graph;
 mod utils;
 use attacks::{attack, attack_with_profile, AttackProfile, DepthReduceSet, GreedyParams};
-use graph::{DRGAlgo, Graph};
+use graph::{DRGAlgo, Graph, GraphSpec};
 use rand::Rng;
 
 // used by test module...
@@ -82,12 +82,13 @@ fn greedy_attacks() {
     let size = (2 as usize).pow(6);
     let deg = 6;
     let target_size = (0.30 * size as f64) as usize;
-    let mut g1 = Graph::load_or_create(fname, size, random_bytes, DRGAlgo::MetaBucket(deg));
-    let mut g2 = Graph::load_or_create(fname, size, random_bytes, DRGAlgo::BucketSample);
-    println!(
-        "Greedy attacks tests with size = {}, target set S size <= {}",
-        size, target_size
-    );
+    // let mut g1 = Graph::load_or_create(fname, size, random_bytes, DRGAlgo::MetaBucket(deg));
+    // let mut g2 = Graph::load_or_create(fname, size, random_bytes, DRGAlgo::BucketSample);
+    let spec = GraphSpec {
+        size,
+        seed: random_bytes,
+        algo: DRGAlgo::MetaBucket(deg),
+    };
 
     //attack(&mut g1, DepthReduceSet::ValiantDepth(depth));
 
@@ -103,17 +104,17 @@ fn greedy_attacks() {
         iter_topk: true,
     };
 
-    let mut profile = AttackProfile::from_attack(DepthReduceSet::GreedySize(target_size, greed_params.clone()), g2.size());
+    let mut profile = AttackProfile::from_attack(
+        DepthReduceSet::GreedySize(target_size, greed_params.clone()),
+        size,
+    );
     // FIXME: Build the profile in one statement instead of making it mutable.
     profile.runs = 3;
     profile.range.start = 0.2;
     profile.range.end = 0.5;
     profile.range.interval = 0.1;
 
-    attack_with_profile(
-        &mut g2,
-        profile,
-    );
+    attack_with_profile(spec, profile);
 
     // FIXME: Figure out what to do with all these variations, the current
     //  `AttackProfile` doesn't contemplate them, we always run the *same*

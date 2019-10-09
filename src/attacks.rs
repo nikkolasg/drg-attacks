@@ -3,8 +3,10 @@ use std::collections::{BinaryHeap, HashSet};
 use std::time::Instant;
 
 use log::{debug, trace};
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha20Rng;
 
-use crate::graph::{DRGAlgo, Edge, Graph};
+use crate::graph::{DRGAlgo, Edge, Graph, GraphSpec};
 use crate::utils;
 
 // FIXME: This name is no longer representative, we no longer attack using
@@ -145,7 +147,7 @@ pub fn attack(g: &mut Graph, attack: DepthReduceSet) -> SingleAttackResult {
 }
 
 // FIXME: Eventually this should replace the old `attack`.
-pub fn attack_with_profile(g: &mut Graph, profile: AttackProfile) {
+pub fn attack_with_profile(spec: GraphSpec, profile: AttackProfile) {
     let mut targets: Vec<f64> = Vec::new();
     let mut target = profile.range.start;
     loop {
@@ -157,11 +159,14 @@ pub fn attack_with_profile(g: &mut Graph, profile: AttackProfile) {
     }
     // FIXME: Move this logic to `TargetRange`.
 
+    let mut rng = ChaCha20Rng::from_seed(spec.seed);
+    let mut graphs = Graph::many_from_spec(spec, &mut rng, profile.runs);
+
     let mut results: Vec<Vec<SingleAttackResult>> =
         vec![vec![SingleAttackResult::default(); profile.runs]; targets.len()];
 
     for (t, target) in targets.iter().enumerate() {
-        let absolute_target = (target * g.size() as f64) as usize;
+        let absolute_target = (target * spec.size as f64) as usize;
         let attack_type = match profile.attack.clone() {
             DepthReduceSet::ValiantDepth(_) => DepthReduceSet::ValiantDepth(absolute_target),
             DepthReduceSet::ValiantSize(_) => DepthReduceSet::ValiantSize(absolute_target),
@@ -172,13 +177,13 @@ pub fn attack_with_profile(g: &mut Graph, profile: AttackProfile) {
         // FIXME: Same as before, the target should be decoupled from the type of attack.
 
         for run in 0..profile.runs {
-            // FIXME: Should we create a new graph for different runs? Or targets?
+            let mut g = &mut graphs[run];
 
             println!(
                 "Attack (run {}) target ({:?} = {}), with {:?}",
                 run, profile.target, target, attack_type
             );
-            results[t][run] = attack(g, attack_type.clone());
+            results[t][run] = attack(&mut g, attack_type.clone());
         }
     }
 

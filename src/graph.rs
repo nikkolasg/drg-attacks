@@ -12,12 +12,16 @@ use std::io::BufReader;
 /// Data that completely specifies the `Graph` to be created. Many runs
 /// from the save stored data should produce the same `Graph` always
 /// (that is, the same parents/edges).
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub struct GraphSpec {
-    size: usize,
+    pub size: usize,
     // FIXME: Not always needed, should be behind an `Option`.
-    seed: [u8; 32],
-    algo: DRGAlgo,
+    // FIXME: We should create the graphs from a RNG *always* instead
+    //  of directly from the seed (otherwise repeatedly created graphs
+    //  for the same attack profile will be all the same). This should
+    //  be enforced here.
+    pub seed: [u8; 32],
+    pub algo: DRGAlgo,
 }
 
 // Graph holds the parameters and the edges of the graph. This is a special type
@@ -83,18 +87,32 @@ impl Graph {
         // FIXME: To avoid changing too much code at the moment the `GraphSpec`
         //  is built here, but ideally the consumer should already provide it.
         let spec = GraphSpec { seed, size, algo };
+        let mut rng = ChaCha20Rng::from_seed(spec.seed);
 
+        Self::new_from_rng(spec, &mut rng)
+    }
+
+    // FIXME: The RNG is not always necessary so this function is misleading.
+    fn new_from_rng(spec: GraphSpec, rng: &mut ChaCha20Rng) -> Graph {
         let mut g = Graph {
             spec,
-            parents: Vec::with_capacity(size),
+            parents: Vec::with_capacity(spec.size),
             children: vec![],
         };
         match g.algo() {
-            DRGAlgo::BucketSample => g.bucket_sample(),
-            DRGAlgo::MetaBucket(degree) => g.meta_bucket(degree),
+            DRGAlgo::BucketSample => g.bucket_sample(rng),
+            DRGAlgo::MetaBucket(degree) => g.meta_bucket(degree, rng),
             DRGAlgo::KConnector(k) => g.connect_neighbors(k),
         }
         g
+    }
+
+    // FIXME: This function should replace the old `new` as much as possible.
+    pub fn many_from_spec(spec: GraphSpec, rng: &mut ChaCha20Rng, n_graph: usize) -> Vec<Graph> {
+        (0..n_graph)
+            .into_iter()
+            .map(|_| Graph::new_from_rng(spec, rng))
+            .collect()
     }
 
     /// load_or_create tries to read the json description of the graph specified
@@ -257,15 +275,10 @@ impl Graph {
         self.spec.algo
     }
 
-    fn seed(&self) -> &[u8; 32] {
-        &self.spec.seed
-    }
-
     // Implementation of the first algorithm BucketSample on page 22 of the
     // porep paper : https://web.stanford.edu/~bfisch/porep_short.pdf
     // It produces a degree-2 graph which is asymptotically depth-robust.
-    fn bucket_sample(&mut self) {
-        let mut rng = self.rng();
+    fn bucket_sample(&mut self, rng: &mut ChaCha20Rng) {
         for node in 0..self.parents.capacity() {
             let mut parents = Vec::new();
             match node {
@@ -301,8 +314,7 @@ impl Graph {
     // Implementation of the meta-graph construction algorithm described in page 22
     // of the porep paper https://web.stanford.edu/~bfisch/porep_short.pdf
     // It produces a degree-d graph on average.
-    fn meta_bucket(&mut self, degree: usize) {
-        let mut rng = self.rng();
+    fn meta_bucket(&mut self, degree: usize, rng: &mut ChaCha20Rng) {
         let m = degree - 1;
         for node in 0..self.parents.capacity() {
             let mut parents = Vec::with_capacity(degree);
@@ -402,10 +414,6 @@ impl Graph {
             panic!("called children() without children_project() first");
         }
         return &self.children;
-    }
-
-    fn rng(&self) -> ChaCha20Rng {
-        ChaCha20Rng::from_seed(*self.seed())
     }
 
     /// Returns the number of edges
