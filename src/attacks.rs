@@ -57,12 +57,14 @@ pub enum AttackTarget {
 //  an easier way than coding this from scratch.
 // FIXME: Assert range validity in the struct itself instead of on the caller
 //  (`attack`).
+#[derive(Debug)]
 pub struct TargetRange {
     pub start: f64,
     pub interval: f64,
     pub end: f64,
 }
 
+#[derive(Debug)]
 pub struct AttackProfile {
     pub runs: usize,
     pub target: AttackTarget,
@@ -113,13 +115,44 @@ impl AttackProfile {
 }
 
 /// Results of an attack expressed in relation to the graph size.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct SingleAttackResult {
     depth: f64,
     exclusion_size: f64,
     // graph_size: usize,
     // FIXME: Do we care to know the absolute number or just
     // relative to the graph size?
+}
+
+impl<'a> std::iter::Sum<&'a Self> for SingleAttackResult {
+    fn sum<I>(iter: I) -> Self
+    where
+        I: Iterator<Item = &'a Self>,
+    {
+        iter.fold(SingleAttackResult::default(), |a, b| SingleAttackResult {
+            depth: a.depth + b.depth,
+            exclusion_size: a.exclusion_size + b.exclusion_size,
+        })
+    }
+}
+
+/// Average of many `SingleAttackResult`s.
+// FIXME: Should be turn into a more generalized structure that also
+//  has the variance along with the mean using a specialized crate.
+#[derive(Clone, Default, Debug)]
+pub struct AveragedAttackResult {
+    mean_depth: f64,
+    mean_size: f64,
+}
+
+impl AveragedAttackResult {
+    pub fn from_results(results: Vec<SingleAttackResult>) -> Self {
+        let aggregated: SingleAttackResult = results.iter().sum();
+        AveragedAttackResult {
+            mean_depth: aggregated.depth / results.len() as f64,
+            mean_size: aggregated.exclusion_size / results.len() as f64,
+        }
+    }
 }
 
 impl std::fmt::Display for SingleAttackResult {
@@ -187,9 +220,17 @@ pub fn attack_with_profile(spec: GraphSpec, profile: AttackProfile) {
         }
     }
 
-    // FIXME: Define how to process and output results, e.g., average across runs
-    //  and take best result across different targets. Should we then output here
-    //  a single result or an entire array or a combination (best + all)?
+    let average_results: Vec<AveragedAttackResult> = results
+        .iter()
+        .map(|target_results| AveragedAttackResult::from_results(target_results.to_vec()))
+        .collect();
+
+    // FIXME: Turn this into a JSON output.
+    println!("\n\n------------------");
+    println!("Attack finished: {:?}", profile);
+    for (t, target) in targets.iter().enumerate() {
+        println!("Target {:?}: {:?}", target, average_results[t]);
+    }
 }
 
 // GreedyParams holds the different parameters to choose for the greedy algorithm
