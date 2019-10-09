@@ -9,6 +9,17 @@ use std::fs::File;
 use std::hash::Hash;
 use std::io::BufReader;
 
+/// Data that completely specifies the `Graph` to be created. Many runs
+/// from the save stored data should produce the same `Graph` always
+/// (that is, the same parents/edges).
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GraphSpec {
+    size: usize,
+    // FIXME: Not always needed, should be behind an `Option`.
+    seed: [u8; 32],
+    algo: DRGAlgo,
+}
+
 // Graph holds the parameters and the edges of the graph. This is a special type
 // of graph that has a *proper* labelling: for each edge (i,j), we have i < j.
 #[derive(Debug, Serialize, Deserialize)]
@@ -21,10 +32,8 @@ pub struct Graph {
     // the parent of any other node. In that case, it is not included in the graph G
     parents: Vec<Vec<Node>>,
     // FIXME: Use slices, after construction this doesn't change.
-    size: usize,
+    spec: GraphSpec,
 
-    seed: [u8; 32],
-    algo: DRGAlgo,
     // children holds all the children relationships of all nodes.
     // If j = children[i][u] for any u, then there is an edge (i -> j).
     // NOTE: it is NOT computed by default, only when calling children_project()
@@ -71,14 +80,16 @@ impl Graph {
     // new returns a new graph instance from the given parameters.
     // The graph's edges are not generated yet, call fill_drg to compute the edges.
     pub fn new(size: usize, seed: [u8; 32], algo: DRGAlgo) -> Graph {
+        // FIXME: To avoid changing too much code at the moment the `GraphSpec`
+        //  is built here, but ideally the consumer should already provide it.
+        let spec = GraphSpec { seed, size, algo };
+
         let mut g = Graph {
-            algo,
-            seed,
+            spec,
             parents: Vec::with_capacity(size),
-            size,
             children: vec![],
         };
-        match g.algo {
+        match g.algo() {
             DRGAlgo::BucketSample => g.bucket_sample(),
             DRGAlgo::MetaBucket(degree) => g.meta_bucket(degree),
             DRGAlgo::KConnector(k) => g.connect_neighbors(k),
@@ -123,7 +134,7 @@ impl Graph {
     /// Number of nodes in the graph.
     // FIXME: Standardize size usage, don't access length or capacity of inner structures.
     pub fn size(&self) -> usize {
-        self.size
+        self.spec.size
     }
 
     // depth_exclude returns the depth of the graph when excluding the given
@@ -229,12 +240,25 @@ impl Graph {
         }
 
         Graph {
-            size: (&out).len(),
+            spec: GraphSpec {
+                size: (&out).len(),
+                ..self.spec
+            },
+            // FIXME: We should think if we actually need to create new graphs
+            //  out of old ones (just to count the depth of a reduced set).
+            //  This violates the contract of `GraphSpec`: this new graph
+            //  wouldn't be able to be recreated from it.
             parents: out,
-            algo: self.algo,
-            seed: self.seed,
             children: vec![],
         }
+    }
+
+    fn algo(&self) -> DRGAlgo {
+        self.spec.algo
+    }
+
+    fn seed(&self) -> &[u8; 32] {
+        &self.spec.seed
     }
 
     // Implementation of the first algorithm BucketSample on page 22 of the
@@ -381,7 +405,7 @@ impl Graph {
     }
 
     fn rng(&self) -> ChaCha20Rng {
-        ChaCha20Rng::from_seed(self.seed)
+        ChaCha20Rng::from_seed(*self.seed())
     }
 
     /// Returns the number of edges
@@ -448,7 +472,7 @@ impl Graph {
     }
 
     pub fn degree(&self) -> usize {
-        match self.algo {
+        match self.algo() {
             DRGAlgo::BucketSample => 2,
             DRGAlgo::MetaBucket(deg) => deg,
             DRGAlgo::KConnector(d) => d,
@@ -507,7 +531,7 @@ impl Graph {
 impl fmt::Display for Graph {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "G(cap:{}, drg: ", self.parents.len())?;
-        match self.algo {
+        match self.algo() {
             DRGAlgo::BucketSample => write!(f, "bucket, ")?,
             DRGAlgo::MetaBucket(d) => write!(f, "meta-bucket (degree {}), ", d)?,
             DRGAlgo::KConnector(k) => write!(f, "{}-connect, ", k)?,
@@ -755,10 +779,15 @@ pub mod tests {
     }
     pub fn graph_from(parents: Vec<Vec<Node>>) -> Graph {
         Graph {
-            size: (&parents).len(),
+            spec: GraphSpec {
+                size: (&parents).len(),
+                seed: TEST_SEED,
+                algo: DRGAlgo::BucketSample,
+            },
+            // FIXME: Same as `remove`, we shouldn't be creating graphs from
+            //  parents (copying parents is almost like copying the entire
+            //  graph for that matter).
             parents: parents,
-            seed: TEST_SEED,
-            algo: DRGAlgo::BucketSample,
             children: vec![],
         }
     }
