@@ -5,4 +5,4 @@ jobs:
         - image: circleci/rust:latest
     steps:
       - checkout
-      - cargo test
+      - run: cargo test
