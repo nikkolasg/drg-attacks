@@ -9,6 +9,7 @@ use std::env;
 // used by test module...
 #[macro_use]
 extern crate lazy_static;
+extern crate rayon;
 
 fn porep_comparison() {
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
@@ -79,7 +80,7 @@ fn porep_comparison() {
 fn greedy_attacks() {
     println!("Greedy Attacks parameters");
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
-    let n = 10;
+    let n = 8;
     let size = (2 as usize).pow(n);
     let deg = 6;
     let target_size = (0.30 * size as f64) as usize;
@@ -88,6 +89,7 @@ fn greedy_attacks() {
         seed: random_bytes,
         algo: DRGAlgo::MetaBucket(deg),
     };
+    let runs = 10;
     //attack(&mut g1, DepthReduceSet::ValiantDepth(depth));
 
     let mut greed_params = GreedyParams {
@@ -108,20 +110,71 @@ fn greedy_attacks() {
         size,
     );
     // FIXME: Build the profile in one statement instead of making it mutable.
-    profile.runs = 3;
+    profile.runs = runs;
     profile.range.start = 0.2;
     profile.range.end = 0.5;
     profile.range.interval = 0.1;
 
-    let res = attack_with_profile(spec, &profile);
-    // FIXME: Turn this into a JSON output.
+    let res1 = attack_with_profile(spec, &profile);
+
+    greed_params.length = 16;
+    let mut profile = AttackProfile::from_attack(
+        DepthReduceSet::GreedySize(target_size, greed_params.clone()),
+        size,
+    );
+    profile.runs = runs;
+    profile.range.start = 0.2;
+    profile.range.end = 0.5;
+    profile.range.interval = 0.1;
+
+    let res2 = attack_with_profile(spec, &profile);
     println!("\n\n------------------");
-    println!("Attack finished: {:?}", profile);
+    let json = serde_json::to_string_pretty(&vec![res1, res2]).expect("can't serialize to json");
+    println!("{}", json);
+}
+fn baseline_valiant() {
+    println!("Baseline VALIANT computation for target size [0.10,0.20,0.30]");
+    let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
+    let n = 20;
+    let size = (2 as usize).pow(n);
+    let deg = 6;
+    let target_size = (0.30 * size as f64) as usize;
+    let spec = GraphSpec {
+        size,
+        seed: random_bytes,
+        algo: DRGAlgo::MetaBucket(deg),
+    };
+
+    // target depth
+    let mut profile = AttackProfile::from_attack(DepthReduceSet::ValiantDepth(target_size), size);
+    profile.runs = 3;
+    profile.range.start = 0.15;
+    profile.range.end = 0.25;
+    profile.range.interval = 0.03;
+
+    let res = attack_with_profile(spec, &profile);
+    println!("\n\n------------------");
+    println!("Depth Attack finished: {:?}", profile);
+    let json = serde_json::to_string_pretty(&res).expect("can't serialize to json");
+    println!("{}", json);
+    println!("\n\n------------------");
+
+    // target size
+
+    let mut profile = AttackProfile::from_attack(DepthReduceSet::ValiantSize(target_size), size);
+    profile.runs = 3;
+    profile.range.start = 0.10;
+    profile.range.end = 0.31;
+    profile.range.interval = 0.10;
+
+    let res = attack_with_profile(spec, &profile);
+    println!("\n\n------------------");
+    println!("Size Attack finished: {:?}", profile);
     let json = serde_json::to_string_pretty(&res).expect("can't serialize to json");
     println!("{}", json);
 }
 
-fn baseline() {
+fn baseline_greedy() {
     println!("Baseline computation for target size [0.10,0.20,0.30]");
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
     let n = 20;
@@ -166,7 +219,8 @@ fn main() {
         match args[1].to_lowercase().trim() {
             "greedy" => greedy_attacks(),
             "porep" => porep_comparison(),
-            "baseline" => baseline(),
+            "baseline_greedy" => baseline_greedy(),
+            "baseline_valiant" => baseline_valiant(),
             _ => panic!("command not understood: choose greedy or porep"),
         }
     } else {

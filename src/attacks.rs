@@ -11,6 +11,8 @@ use serde_json::Result;
 use crate::graph::{DRGAlgo, Edge, Graph, GraphSpec};
 use crate::utils;
 
+use rayon::prelude::*;
+
 // FIXME: This name is no longer representative, we no longer attack using
 //  depth as a target, we also have a size target now. This should be renamed
 //  to something more generic like `AttackType`.
@@ -163,9 +165,17 @@ impl AveragedAttackResult {
 /// Struct containing all informations about the attack runs. It can be
 /// serialized into JSON or other format with serde.
 #[derive(Serialize, Deserialize)]
+pub struct Results {
+    attacks: Vec<AttackResults>,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct AttackResults {
-    results: Vec<AveragedAttackResult>,
+    spec: GraphSpec,
+    // number of runs to average out the results
+    runs: usize,
     attack: DepthReduceSet,
+    results: Vec<AveragedAttackResult>,
 }
 
 impl std::fmt::Display for SingleAttackResult {
@@ -237,6 +247,8 @@ pub fn attack_with_profile(spec: GraphSpec, profile: &AttackProfile) -> AttackRe
     }
 
     AttackResults {
+        spec: spec,
+        runs: profile.runs,
         attack: profile.attack.clone(),
         results: targets
             .iter()
@@ -410,7 +422,8 @@ fn append_removal(
 // under-specified function "UpdateNodesInRadius" in algo. 6 of
 // https://eprint.iacr.org/2018/944.pdf
 fn update_radius_set(g: &Graph, node: usize, inradius: &mut HashSet<usize>, radius: usize) {
-    let add_direct_nodes = |v: usize, closests: &mut HashSet<usize>, _: &HashSet<usize>| {
+    let add_direct_nodes = |v: usize, _: &HashSet<usize>| -> HashSet<usize> {
+        let mut closests = HashSet::new();
         // add all direct parent
         g.parents()[v]
             .iter()
@@ -437,6 +450,7 @@ fn update_radius_set(g: &Graph, node: usize, inradius: &mut HashSet<usize>, radi
             g.parents()[v].len(),
             g.children()[v].len()
         );
+        closests
     };
     // insert first the given node and then add the close nodes
     inradius.insert(node);
@@ -444,11 +458,24 @@ fn update_radius_set(g: &Graph, node: usize, inradius: &mut HashSet<usize>, radi
     tosearch.insert(node);
     // do it recursively "radius" times
     for i in 0..radius {
-        let mut closests = HashSet::new();
         // grab all direct nodes of those already in radius "i"
-        for &v in tosearch.iter() {
-            add_direct_nodes(v, &mut closests, inradius);
-        }
+        let closests = tosearch
+            .par_iter()
+            .fold(
+                || HashSet::new(),
+                |mut acc, idx| {
+                    let s = add_direct_nodes(*idx, inradius);
+                    acc.extend(s);
+                    acc
+                },
+            )
+            .reduce(
+                || HashSet::new(),
+                |mut acc, set| {
+                    acc.extend(set);
+                    acc
+                },
+            );
         tosearch = closests.clone();
         inradius.extend(closests);
         trace!(

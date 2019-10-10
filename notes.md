@@ -294,3 +294,156 @@ points.  One point used to characterize the depth robustness of the graph is
         ));
     });
 ```
+--------
+Baseline VALIANT computation for target size [0.10,0.20,0.30]
+Attack (run 0) target (Depth(0.2999992370605469) = 0.15), with ValiantDepth(157286)
+        -> |S| = 0.4604
+        -> depth(G-S) = 0.1067
+        -> time elapsed: 35.568549116s
+Attack (run 0) target (Depth(0.2999992370605469) = 0.18), with ValiantDepth(188743)
+        -> |S| = 0.4604
+        -> depth(G-S) = 0.1067
+        -> time elapsed: 33.784741412s
+Attack (run 0) target (Depth(0.2999992370605469) = 0.21), with ValiantDepth(220200)
+        -> |S| = 0.4604
+        -> depth(G-S) = 0.1067
+        -> time elapsed: 34.424781515s
+Attack (run 0) target (Depth(0.2999992370605469) = 0.24), with ValiantDepth(251658)
+        -> |S| = 0.3308
+        -> depth(G-S) = 0.2293
+        -> time elapsed: 30.378717294s
+Attack (run 1) target (Depth(0.2999992370605469) = 0.15), with ValiantDepth(157286)
+        -> |S| = 0.4563
+        -> depth(G-S) = 0.1060
+        -> time elapsed: 34.801943912s
+Attack (run 1) target (Depth(0.2999992370605469) = 0.18), with ValiantDepth(188743)
+        -> |S| = 0.4563
+        -> depth(G-S) = 0.1060
+        -> time elapsed: 33.041768581s
+Attack (run 1) target (Depth(0.2999992370605469) = 0.21), with ValiantDepth(220200)
+        -> |S| = 0.4563
+        -> depth(G-S) = 0.1060
+        -> time elapsed: 32.827424262s
+Attack (run 1) target (Depth(0.2999992370605469) = 0.24), with ValiantDepth(251658)
+        -> |S| = 0.3265
+        -> depth(G-S) = 0.2226
+        -> time elapsed: 30.043105239s
+Attack (run 2) target (Depth(0.2999992370605469) = 0.15), with ValiantDepth(157286)
+        -> |S| = 0.4604
+        -> depth(G-S) = 0.0986
+        -> time elapsed: 32.90691631s
+Attack (run 2) target (Depth(0.2999992370605469) = 0.18), with ValiantDepth(188743)
+        -> |S| = 0.4604
+        -> depth(G-S) = 0.0986
+        -> time elapsed: 32.762877913s
+Attack (run 2) target (Depth(0.2999992370605469) = 0.21), with ValiantDepth(220200)
+        -> |S| = 0.4604
+        -> depth(G-S) = 0.0986
+        -> time elapsed: 32.865584661s
+Attack (run 2) target (Depth(0.2999992370605469) = 0.24), with ValiantDepth(251658)
+        -> |S| = 0.3279
+        -> depth(G-S) = 0.2236
+        -> time elapsed: 29.035486593s
+
+
+------------------
+Depth Attack finished: AttackProfile { runs: 3, target: Depth(0.2999992370605469),
+range: TargetRange { start: 0.15, interval: 0.03, end: 0.25 }, attack: ValiantDepth
+(314572) }
+{
+  "results": [
+    {
+      "target": 0.15,
+      "mean_depth": 0.10377883911132812,
+      "mean_size": 0.4590330123901367
+    },
+    {
+      "target": 0.18,
+      "mean_depth": 0.10377883911132812,
+      "mean_size": 0.4590330123901367
+    },
+    {
+      "target": 0.21,
+      "mean_depth": 0.10377883911132812,
+      "mean_size": 0.4590330123901367
+    },
+    {
+      "target": 0.24,
+      "mean_depth": 0.22513930002848306,
+      "mean_size": 0.3283672332763672
+    }
+  ],
+  "attack": {
+    "ValiantDepth": 314572
+  }
+}
+
+
+------------------
+Attack (run 0) target (Size(0.2999992370605469) = 0.1), with ValiantSize(104857)
+        -> |S| = 0.1775
+        -> depth(G-S) = 0.4748
+        -> time elapsed: 16.255118889s
+Attack (run 0) target (Size(0.2999992370605469) = 0.2), with ValiantSize(209715)
+        -> |S| = 0.3308
+        -> depth(G-S) = 0.2293
+        -> time elapsed: 15.239742931s
+Attack (run 0) target (Size(0.2999992370605469) = 0.30000000000000004), with Valian
+tSize(314572)
+        -> |S| = 0.3308
+        -> depth(G-S) = 0.2293
+        -> time elapsed: 15.072645141s
+Attack (run 1) target (Size(0.2999992370605469) = 0.1), with ValiantSize(104857)
+        -> |S| = 0.1776
+        -> depth(G-S) = 0.4627
+        -> time elapsed: 15.269347989s
+Attack (run 1) target (Size(0.2999992370605469) = 0.2), with ValiantSize(209715)
+        -> |S| = 0.3265
+        -> depth(G-S) = 0.2226
+        -> time elapsed: 15.31680873s
+Attack (run 1) target (Size(0.2999992370605469) = 0.30000000000000004), with Valian
+tSize(314572)
+        -> |S| = 0.3265
+        -> depth(G-S) = 0.2226
+        -> time elapsed: 15.168382539s
+Attack (run 2) target (Size(0.2999992370605469) = 0.1), with ValiantSize(104857)
+        -> |S| = 0.1771
+        -> depth(G-S) = 0.4817
+        -> time elapsed: 14.704309067s
+Attack (run 2) target (Size(0.2999992370605469) = 0.2), with ValiantSize(209715)
+        -> |S| = 0.3279
+        -> depth(G-S) = 0.2236
+        -> time elapsed: 15.124037994s
+Attack (run 2) target (Size(0.2999992370605469) = 0.30000000000000004), with Valian
+tSize(314572)
+        -> |S| = 0.3279
+        -> depth(G-S) = 0.2236
+        -> time elapsed: 14.787900706s
+
+
+------------------
+Size Attack finished: AttackProfile { runs: 3, target: Size(0.2999992370605469), ra
+nge: TargetRange { start: 0.1, interval: 0.1, end: 0.31 }, attack: ValiantSize(3145
+72) }
+{
+  "results": [
+    {
+      "target": 0.1,
+      "mean_depth": 0.4730873107910156,
+      "mean_size": 0.1774123509724935
+    },
+    {
+      "target": 0.2,
+      "mean_depth": 0.22513930002848306,
+      "mean_size": 0.3283672332763672
+    },
+    {
+      "target": 0.30000000000000004,
+      "mean_depth": 0.22513930002848306,
+      "mean_size": 0.3283672332763672
+    }
+  ],
+  "attack": {
+    "ValiantSize": 314572
+  }
+}
