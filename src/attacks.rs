@@ -205,25 +205,28 @@ pub fn attack_with_profile(spec: GraphSpec, profile: &AttackProfile) -> AttackRe
     }
     // FIXME: Move this logic to `TargetRange`.
 
-    let mut rng = ChaCha20Rng::from_seed(spec.seed);
-    let mut graphs = Graph::many_from_spec(spec, &mut rng, profile.runs);
-
     let mut results: Vec<Vec<SingleAttackResult>> =
         vec![vec![SingleAttackResult::default(); profile.runs]; targets.len()];
 
-    for (t, target) in targets.iter().enumerate() {
-        let absolute_target = (target * spec.size as f64) as usize;
-        let attack_type = match profile.attack.clone() {
-            DepthReduceSet::ValiantDepth(_) => DepthReduceSet::ValiantDepth(absolute_target),
-            DepthReduceSet::ValiantSize(_) => DepthReduceSet::ValiantSize(absolute_target),
-            DepthReduceSet::ValiantAB16(_) => DepthReduceSet::ValiantAB16(absolute_target),
-            DepthReduceSet::GreedyDepth(_, p) => DepthReduceSet::GreedyDepth(absolute_target, p),
-            DepthReduceSet::GreedySize(_, p) => DepthReduceSet::GreedySize(absolute_target, p),
-        };
-        // FIXME: Same as before, the target should be decoupled from the type of attack.
+    // Iterate over the graphs first (that means iterating over each run in
+    // the outer `for`) to avoid memory bloat, we don't need to retain a
+    // graph once we attacked it with all targets.
+    let mut rng = ChaCha20Rng::from_seed(spec.seed);
+    for run in 0..profile.runs {
+        let mut g = Graph::new_from_rng(spec, &mut rng);
 
-        for run in 0..profile.runs {
-            let mut g = &mut graphs[run];
+        for (t, target) in targets.iter().enumerate() {
+            let absolute_target = (target * spec.size as f64) as usize;
+            let attack_type = match profile.attack.clone() {
+                DepthReduceSet::ValiantDepth(_) => DepthReduceSet::ValiantDepth(absolute_target),
+                DepthReduceSet::ValiantSize(_) => DepthReduceSet::ValiantSize(absolute_target),
+                DepthReduceSet::ValiantAB16(_) => DepthReduceSet::ValiantAB16(absolute_target),
+                DepthReduceSet::GreedyDepth(_, p) => {
+                    DepthReduceSet::GreedyDepth(absolute_target, p)
+                }
+                DepthReduceSet::GreedySize(_, p) => DepthReduceSet::GreedySize(absolute_target, p),
+            };
+            // FIXME: Same as before, the target should be decoupled from the type of attack.
 
             println!(
                 "Attack (run {}) target ({:?} = {}), with {:?}",

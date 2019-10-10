@@ -93,7 +93,7 @@ impl Graph {
     }
 
     // FIXME: The RNG is not always necessary so this function is misleading.
-    fn new_from_rng(spec: GraphSpec, rng: &mut ChaCha20Rng) -> Graph {
+    pub fn new_from_rng(spec: GraphSpec, rng: &mut ChaCha20Rng) -> Graph {
         let mut g = Graph {
             spec,
             parents: Vec::with_capacity(spec.size),
@@ -105,14 +105,6 @@ impl Graph {
             DRGAlgo::KConnector(k) => g.connect_neighbors(k),
         }
         g
-    }
-
-    // FIXME: This function should replace the old `new` as much as possible.
-    pub fn many_from_spec(spec: GraphSpec, rng: &mut ChaCha20Rng, n_graph: usize) -> Vec<Graph> {
-        (0..n_graph)
-            .into_iter()
-            .map(|_| Graph::new_from_rng(spec, rng))
-            .collect()
     }
 
     /// load_or_create tries to read the json description of the graph specified
