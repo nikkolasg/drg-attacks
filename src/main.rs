@@ -1,3 +1,4 @@
+#![feature(test)]
 mod attacks;
 pub mod graph;
 mod utils;
@@ -10,6 +11,7 @@ use std::env;
 #[macro_use]
 extern crate lazy_static;
 extern crate rayon;
+extern crate test;
 
 fn porep_comparison() {
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
@@ -103,6 +105,7 @@ fn greedy_attacks() {
         length: 8,
         iter_topk: true,
         use_degree: false,
+        parallel: false,
     };
 
     let mut profile = AttackProfile::from_attack(
@@ -149,28 +152,19 @@ fn baseline_valiant() {
     let mut profile = AttackProfile::from_attack(DepthReduceSet::ValiantDepth(target_size), size);
     profile.runs = 3;
     profile.range.start = 0.15;
-    profile.range.end = 0.25;
-    profile.range.interval = 0.03;
+    profile.range.end = 0.26;
+    profile.range.interval = 0.05;
 
-    let res = attack_with_profile(spec, &profile);
-    println!("\n\n------------------");
-    println!("Depth Attack finished: {:?}", profile);
-    let json = serde_json::to_string_pretty(&res).expect("can't serialize to json");
-    println!("{}", json);
-    println!("\n\n------------------");
-
+    let res1 = attack_with_profile(spec, &profile);
     // target size
-
     let mut profile = AttackProfile::from_attack(DepthReduceSet::ValiantSize(target_size), size);
     profile.runs = 3;
-    profile.range.start = 0.10;
+    profile.range.start = 0.15;
     profile.range.end = 0.31;
-    profile.range.interval = 0.10;
+    profile.range.interval = 0.05;
 
-    let res = attack_with_profile(spec, &profile);
-    println!("\n\n------------------");
-    println!("Size Attack finished: {:?}", profile);
-    let json = serde_json::to_string_pretty(&res).expect("can't serialize to json");
+    let res2 = attack_with_profile(spec, &profile);
+    let json = serde_json::to_string_pretty(&vec![res1,res2]).expect("can't serialize to json");
     println!("{}", json);
 }
 
@@ -194,6 +188,7 @@ fn baseline_greedy() {
         length: 10,
         iter_topk: true,
         use_degree: false,
+        parallel: false,
     };
 
     let mut profile = AttackProfile::from_attack(
