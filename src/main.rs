@@ -1,34 +1,14 @@
 mod attacks;
 pub mod graph;
 mod utils;
-use attacks::{depth_reduce, DepthReduceSet, GreedyParams};
-use graph::{DRGAlgo, Graph};
+use attacks::{attack, attack_with_profile, AttackProfile, DepthReduceSet, GreedyParams};
+use graph::{DRGAlgo, Graph, GraphSpec};
 use rand::Rng;
+use serde_json::Result;
 use std::env;
-use std::time::Instant;
-
 // used by test module...
 #[macro_use]
 extern crate lazy_static;
-
-fn attack(g: &mut Graph, r: DepthReduceSet) {
-    println!("Attack with {:?}", r);
-    let start = Instant::now();
-    let set = depth_reduce(g, r);
-    let duration = start.elapsed();
-    let depth = g.depth_exclude(&set);
-    println!(
-        "\t-> |S| = {} = {:.4}n",
-        set.len(),
-        (set.len() as f32) / (g.cap() as f32)
-    );
-    println!(
-        "\t-> depth(G-S) = {} = {:.4}n",
-        depth,
-        (depth as f32) / (g.cap() as f32)
-    );
-    println!("\t-> time elapsed: {:?}", duration);
-}
 
 fn porep_comparison() {
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
@@ -98,25 +78,20 @@ fn porep_comparison() {
 
 fn greedy_attacks() {
     println!("Greedy Attacks parameters");
-    println!("DRG graph generation");
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
-    let n = 20;
+    let n = 10;
     let size = (2 as usize).pow(n);
     let deg = 6;
-    let depth = (0.25 * size as f64) as usize;
-    let fname = format!("greedy_n{}_deg{}.json", n, deg);
-    let mut g1 = Graph::load_or_create(&fname, size, random_bytes, DRGAlgo::MetaBucket(deg));
     let target_size = (0.30 * size as f64) as usize;
-    let mut g1 = Graph::load_or_create(&fname, size, random_bytes, DRGAlgo::MetaBucket(deg));
-    println!(
-        "Greedy attacks tests with size = {}, target set S size <= {}",
-        size, target_size
-    );
-
+    let spec = GraphSpec {
+        size,
+        seed: random_bytes,
+        algo: DRGAlgo::MetaBucket(deg),
+    };
     //attack(&mut g1, DepthReduceSet::ValiantDepth(depth));
 
     let mut greed_params = GreedyParams {
-        k: GreedyParams::k_ratio(n as usize),
+        k: 50,
         radius: 4,
         reset: true,
         // length influences the number of points taken from topk in one iteration
@@ -128,54 +103,60 @@ fn greedy_attacks() {
         use_degree: false,
     };
 
-    attack(
-        &mut g1,
+    let mut profile = AttackProfile::from_attack(
         DepthReduceSet::GreedySize(target_size, greed_params.clone()),
+        size,
     );
-    attack(
-        &mut g1,
-        DepthReduceSet::GreedyDepth(depth, greed_params.clone()),
-    );
-    greed_params.use_degree = true;
-    attack(
-        &mut g1,
-        DepthReduceSet::GreedyDepth(depth, greed_params.clone()),
-    );
+    // FIXME: Build the profile in one statement instead of making it mutable.
+    profile.runs = 3;
+    profile.range.start = 0.2;
+    profile.range.end = 0.5;
+    profile.range.interval = 0.1;
 
-    greed_params.iter_topk = false;
-    attack(
-        &mut g1,
-        DepthReduceSet::GreedyDepth(depth, greed_params.clone()),
+    let res = attack_with_profile(spec, &profile);
+    // FIXME: Turn this into a JSON output.
+    println!("\n\n------------------");
+    println!("Attack finished: {:?}", profile);
+    let json = serde_json::to_string_pretty(&res).expect("can't serialize to json");
+    println!("{}", json);
+}
+
+fn baseline() {
+    println!("Baseline computation for target size [0.10,0.20,0.30]");
+    let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
+    let n = 20;
+    let size = (2 as usize).pow(n);
+    let deg = 6;
+    let target_size = (0.30 * size as f64) as usize;
+    let spec = GraphSpec {
+        size,
+        seed: random_bytes,
+        algo: DRGAlgo::MetaBucket(deg),
+    };
+
+    let mut greed_params = GreedyParams {
+        k: GreedyParams::k_ratio(n as usize),
+        radius: 4,
+        reset: true,
+        length: 10,
+        iter_topk: true,
+        use_degree: false,
+    };
+
+    let mut profile = AttackProfile::from_attack(
+        DepthReduceSet::GreedyDepth(target_size, greed_params.clone()),
+        size,
     );
-    greed_params.iter_topk = false;
-    attack(
-        &mut g1,
-        DepthReduceSet::GreedySize(target_size, greed_params.clone()),
-    );
-    // k_ratio seems to give XXX
-    greed_params.k = 300; // normally 2^(n-18)/2 * 400 -> take the minimum and reduce
-    attack(
-        &mut g1,
-        DepthReduceSet::GreedySize(target_size, greed_params.clone()),
-    );
-    // reset seems to give a slightly worse result
-    greed_params.reset = false;
-    attack(
-        &mut g1,
-        DepthReduceSet::GreedySize(target_size, greed_params.clone()),
-    );
-    // higher radius seems to give XXX
-    greed_params.radius = 8;
-    attack(
-        &mut g1,
-        DepthReduceSet::GreedySize(target_size, greed_params.clone()),
-    );
-    // higher length seems to give XXX
-    greed_params.length = 32;
-    attack(
-        &mut g1,
-        DepthReduceSet::GreedySize(target_size, greed_params.clone()),
-    );
+    profile.runs = 3;
+    profile.range.start = 0.10;
+    profile.range.end = 0.31;
+    profile.range.interval = 0.10;
+
+    let res = attack_with_profile(spec, &profile);
+    println!("\n\n------------------");
+    println!("Attack finished: {:?}", profile);
+    let json = serde_json::to_string_pretty(&res).expect("can't serialize to json");
+    println!("{}", json);
 }
 
 fn main() {
@@ -185,13 +166,10 @@ fn main() {
         match args[1].to_lowercase().trim() {
             "greedy" => greedy_attacks(),
             "porep" => porep_comparison(),
+            "baseline" => baseline(),
             _ => panic!("command not understood: choose greedy or porep"),
         }
     } else {
         porep_comparison();
     }
-
-    //small_graph();
-    greedy_attacks();
-    //porep_comparison();
 }
