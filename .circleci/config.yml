@@ -2,7 +2,8 @@ version: 2
 jobs:
   build:
     docker:
-        - image: circleci/rust:latest
+        #- image: circleci/rust:latest
+         - image: zrzka/rust-circleci
     steps:
       - checkout
       - run: rustup run nightly cargo test
