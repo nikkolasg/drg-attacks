@@ -1,6 +1,6 @@
 #![feature(test)]
 use std::cmp::{Ordering, Reverse};
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use log::{debug, trace};
@@ -420,46 +420,45 @@ fn append_removal(
     );
 }
 
+fn add_direct_nodes(g: &Graph, v: usize, rad: &HashSet<usize>, mut f: impl FnMut(usize)) {
+    // add all direct parent
+    g.parents()[v]
+        .iter()
+        // no need to continue searching with that parent since it's
+        // already in the radius, i.e. it already has been searched
+        // FIXME see if it works and resolves any potential loops
+        .filter(|&parent| !rad.contains(parent))
+        .for_each(|&parent| {
+            f(parent);
+            //closests.insert(parent);
+        });
+
+    // add all direct children
+    g.children()[v]
+        .iter()
+        // no need to continue searching with that parent since it's
+        // already in the radius, i.e. it already has been searched
+        .filter(|&child| !rad.contains(child))
+        .for_each(|&child| {
+            //closests.insert(child);
+            f(child);
+        });
+    trace!(
+        "\t add_direct node {}: at most {} parents and {} children",
+        v,
+        g.parents()[v].len(),
+        g.children()[v].len()
+    );
+    //closests
+}
+
 // update_radius_set fills the given inradius set with nodes that inside a radius
 // of the given node. Size of the radius is given radius. It corresponds to the
 // under-specified function "UpdateNodesInRadius" in algo. 6 of
 // https://eprint.iacr.org/2018/944.pdf
 fn update_radius_set(g: &Graph, node: usize, inradius: &mut HashSet<usize>, p: &GreedyParams) {
     let radius = p.radius;
-    let add_direct_nodes =
-        |v: usize, c: Option<HashSet<usize>>, _: &HashSet<usize>| -> HashSet<usize> {
-            let mut closests = match c {
-                Some(hs) => hs,
-                None => HashSet::new(),
-            };
-            // add all direct parent
-            g.parents()[v]
-                .iter()
-                // no need to continue searching with that parent since it's
-                // already in the radius, i.e. it already has been searched
-                // FIXME see if it works and resolves any potential loops
-                //.filter(|&parent| !rad.contains(parent))
-                .for_each(|&parent| {
-                    closests.insert(parent);
-                });
-
-            // add all direct children
-            g.children()[v]
-                .iter()
-                // no need to continue searching with that parent since it's
-                // already in the radius, i.e. it already has been searched
-                //.filter(|&child| !rad.contains(child))
-                .for_each(|&child| {
-                    closests.insert(child);
-                });
-            trace!(
-                "\t add_direct node {}: at most {} parents and {} children",
-                v,
-                g.parents()[v].len(),
-                g.children()[v].len()
-            );
-            closests
-        };
+    //let add_direct_nodes = |v: usize, rad: &HashSet<usize>, f: &FnMut(usize)| -> HashSet<usize> {
     // insert first the given node and then add the close nodes
     inradius.insert(node);
     let mut tosearch = HashSet::new();
@@ -474,8 +473,9 @@ fn update_radius_set(g: &Graph, node: usize, inradius: &mut HashSet<usize>, p: &
                 .fold(
                     || HashSet::new(),
                     |mut acc, idx| {
-                        let s = add_direct_nodes(*idx, None, inradius);
-                        acc.extend(s);
+                        add_direct_nodes(g, *idx, inradius, |x| {
+                            acc.insert(x);
+                        });
                         acc
                     },
                 )
@@ -490,7 +490,9 @@ fn update_radius_set(g: &Graph, node: usize, inradius: &mut HashSet<usize>, p: &
             let mut c = HashSet::new();
             // grab all direct nodes of those already in radius "i"
             for &v in tosearch.iter() {
-                c = add_direct_nodes(v, Some(c), inradius);
+                add_direct_nodes(g, v, inradius, |x| {
+                    c.insert(x);
+                });
             }
             c
         };
@@ -568,7 +570,7 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, p: &GreedyParams) -> Vec<Pair> {
     // NOTE: difference with the C# that recomputes that vector separately.
     // Since topk is directly correlated to incidents[], we can compute both
     // at the same time and remove one O(n) iteration.
-    let incident_of = |node :usize| -> Pair {
+    let incident_of = |node: usize| -> Pair {
         Pair(
             node,
             (0..=length)
@@ -577,19 +579,33 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, p: &GreedyParams) -> Vec<Pair> {
         )
     };
 
-    // FIXME: this specific part doesn't improve 
-    let mut incidents = if p.parallel && false { 
-        (0..g.size()).into_par_iter()
+    // FIXME: this specific part doesn't improve
+    let mut incidents = if p.parallel {
+        (0..g.size())
+            .into_par_iter()
             .filter(|n| !s.contains(n))
-            .fold(|| Vec::new(), |mut acc, n| { acc.push(incident_of(n)); acc})
-            .reduce(|| Vec::with_capacity(g.size()), |mut acc, p| { acc.extend(p); acc})
-    } else { 
-        (0..g.size()).into_iter() 
-            .filter(|n| !s.contains(n))
-            .fold(Vec::with_capacity(g.size()), |mut acc, n|  { 
+            .fold(
+                || Vec::new(),
+                |mut acc, n| {
+                    acc.push(incident_of(n));
+                    acc
+                },
+            )
+            .reduce(
+                || Vec::with_capacity(g.size()),
+                |mut acc, p| {
+                    acc.extend(p);
+                    acc
+                },
+            )
+    } else {
+        (0..g.size()).into_iter().filter(|n| !s.contains(n)).fold(
+            Vec::with_capacity(g.size()),
+            |mut acc, n| {
                 acc.push(incident_of(n));
                 acc
-            })
+            },
+        )
     };
 
     if p.parallel {
@@ -913,7 +929,7 @@ mod test {
         update_radius_set(&graph, node, &mut inradius, &p);
         assert_eq!(inradius, HashSet::from_iter(vec![0, 1, 2, 3, 4, 5]));
     }
-    
+
     use ::test::Bencher;
 
     #[bench]
@@ -930,10 +946,9 @@ mod test {
             parallel: false,
             ..GreedyParams::default()
         };
-
         b.iter(|| update_radius_set(&graph, node, &mut inradius, &p));
     }
-    
+
     #[bench]
     fn bench_update_radius_parallel(b: &mut Bencher) {
         let size = (2 as u32).pow(16) as usize;
@@ -955,7 +970,11 @@ mod test {
     fn bench_count_paths(b: &mut Bencher) {
         let size = (2 as u32).pow(16) as usize;
         let degree = 4;
-        let graph = graph::Graph::new(size, graph::tests::TEST_SEED, graph::DRGAlgo::MetaBucket(degree));
+        let graph = graph::Graph::new(
+            size,
+            graph::tests::TEST_SEED,
+            graph::DRGAlgo::MetaBucket(degree),
+        );
         let length = 10;
         let k = 400;
         let s = HashSet::new();
@@ -971,7 +990,11 @@ mod test {
     fn bench_count_paths_par(b: &mut Bencher) {
         let size = (2 as u32).pow(16) as usize;
         let degree = 4;
-        let graph = graph::Graph::new(size, graph::tests::TEST_SEED, graph::DRGAlgo::MetaBucket(degree));
+        let graph = graph::Graph::new(
+            size,
+            graph::tests::TEST_SEED,
+            graph::DRGAlgo::MetaBucket(degree),
+        );
         let length = 10;
         let k = 400;
         let s = HashSet::new();
@@ -983,7 +1006,6 @@ mod test {
         };
         b.iter(|| count_paths(&graph, &s, &p));
     }
-
 
     #[test]
     fn test_count_paths() {
