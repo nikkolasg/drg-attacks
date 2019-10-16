@@ -1,14 +1,12 @@
 use std::cmp::{Ordering, Reverse};
-use std::collections::{BinaryHeap, HashSet};
 use std::time::Instant;
 
 use log::{debug, trace};
-use rand::{Rng, SeedableRng};
+use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
-use serde_json::Result;
 
-use crate::graph::{DRGAlgo, Edge, EdgeSet, ExclusionSet, Graph, GraphSpec, Node, NodeSet};
+use crate::graph::{EdgeSet, ExclusionSet, Graph, GraphSpec, Node, NodeSet};
 use crate::utils;
 
 // FIXME: This name is no longer representative, we no longer attack using
@@ -296,7 +294,7 @@ fn greedy_reduce(g: &mut Graph, d: DepthReduceSet) -> ExclusionSet {
             let mut p = p.clone();
             p.k = std::cmp::min(p.k, (size as f32 * 0.01).ceil() as usize);
 
-            greedy_reduce_main(g, p, &|set: &ExclusionSet, g: &mut Graph| set.size() < size)
+            greedy_reduce_main(g, p, &|set: &ExclusionSet, _: &mut Graph| set.size() < size)
         }
         _ => panic!("invalid DepthReduceSet option"),
     }
@@ -305,7 +303,7 @@ fn greedy_reduce(g: &mut Graph, d: DepthReduceSet) -> ExclusionSet {
 fn greedy_reduce_main(
     g: &mut Graph,
     p: GreedyParams,
-    f: &Fn(&ExclusionSet, &mut Graph) -> bool,
+    f: &dyn Fn(&ExclusionSet, &mut Graph) -> bool,
 ) -> ExclusionSet {
     let mut s = ExclusionSet::new(g);
     g.children_project();
@@ -499,7 +497,7 @@ impl PartialEq for Pair {
 //      The number of incident path is not given.
 fn count_paths(g: &Graph, s: &ExclusionSet, p: &GreedyParams) -> Vec<Pair> {
     if p.use_degree {
-        return count_paths_degree(g, s, p);
+        return count_paths_degree(g, s);
     }
     let length = p.length;
     // dimensions are [n][depth]
@@ -552,7 +550,7 @@ fn count_paths(g: &Graph, s: &ExclusionSet, p: &GreedyParams) -> Vec<Pair> {
     incidents
 }
 
-fn count_paths_degree(g: &Graph, s: &ExclusionSet, p: &GreedyParams) -> Vec<Pair> {
+fn count_paths_degree(g: &Graph, s: &ExclusionSet) -> Vec<Pair> {
     let mut v = Vec::with_capacity(g.size() - s.size());
     g.for_each_node(|&node| {
         if s.contains(node) {
@@ -642,7 +640,7 @@ fn valiant_reduce(g: &Graph, d: DepthReduceSet) -> ExclusionSet {
     }
 }
 
-fn valiant_reduce_main(g: &Graph, f: &Fn(&ExclusionSet) -> bool) -> ExclusionSet {
+fn valiant_reduce_main(g: &Graph, f: &dyn Fn(&ExclusionSet) -> bool) -> ExclusionSet {
     let partitions = valiant_partitions(g);
     // TODO replace by a simple bitset or boolean vec
     let mut chosen: Vec<usize> = Vec::new();
@@ -698,10 +696,12 @@ fn valiant_partitions(g: &Graph) -> Vec<EdgeSet> {
 
 #[cfg(test)]
 mod test {
-
     use super::super::graph;
     use super::*;
+    use crate::graph::{DRGAlgo, Edge};
     use rand::Rng;
+
+    use std::collections::HashSet;
     use std::iter::FromIterator;
 
     static TEST_SIZE: usize = 20;
@@ -854,7 +854,6 @@ mod test {
     #[test]
     fn test_count_paths() {
         let graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
-        let target_length = 2;
         // test with empty set to remove
         let mut s = ExclusionSet::new(&graph);
         let p = GreedyParams {
