@@ -1,6 +1,4 @@
 #![deny(warnings)]
-//mod attacks;
-//pub mod graph;
 use drg::attacks::{attack, attack_with_profile, AttackProfile, DepthReduceSet, GreedyParams};
 use drg::graph::{DRGAlgo, Graph, GraphSpec};
 use rand::Rng;
