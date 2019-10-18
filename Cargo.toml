@@ -13,3 +13,17 @@ serde_json = "1.0"
 log = "0.4"
 pretty_env_logger = "0.3.1"
 rayon = "1.2.0"
+gperftools = "0.2"
+clap = "2.33.0"
+fnv = "1.0.6"
+
+[features]
+default = []
+cpu-profile = []
+
+[profile.release]
+# debug = true
+# Include debug symbols for the `--lines` option in `pprof` to
+# take effect.
+# FIXME: We want debug symbols in release mode only when profiling,
+#  this option should be controlled by the `cpu-profile` feature.

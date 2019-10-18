@@ -13,6 +13,38 @@ extern crate lazy_static;
 extern crate rayon;
 extern crate test;
 
+use clap::{value_t, App, Arg, SubCommand};
+#[cfg(feature = "cpu-profile")]
+use gperftools::profiler::PROFILER;
+
+/// Start profile (currently use for the Greedy attack) and dump the file in
+/// the current directory. It can later be analyzed with `pprof`, e.g.,
+/// ```text
+/// cargo run --release --features cpu-profile  -- -n 14 greedy
+/// REV=$(git rev-parse --short HEAD)
+/// pprof --lines --dot target/release/drg-attacks greedy.profile > profile-$REV.dot && xdot profile-$REV.dot &
+/// ```
+#[cfg(feature = "cpu-profile")]
+#[inline(always)]
+fn start_profile(stage: &str) {
+    PROFILER
+        .lock()
+        .unwrap()
+        .start(format!("./{}.profile", stage))
+        .unwrap();
+}
+#[cfg(feature = "cpu-profile")]
+#[inline(always)]
+fn stop_profile() {
+    PROFILER.lock().unwrap().stop().unwrap();
+}
+#[cfg(not(feature = "cpu-profile"))]
+#[inline(always)]
+fn start_profile(_stage: &str) {}
+#[cfg(not(feature = "cpu-profile"))]
+#[inline(always)]
+fn stop_profile() {}
+
 fn porep_comparison() {
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
     let n = 20;
@@ -79,7 +111,7 @@ fn porep_comparison() {
     // NOTE: AB16 seems slower and less performant than the ValiantDepth
 }
 
-fn greedy_attacks() {
+fn greedy_attacks(n: usize) {
     println!("Greedy Attacks parameters");
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
     let n = 8;
@@ -130,9 +162,13 @@ fn greedy_attacks() {
     profile.range.end = 0.5;
     profile.range.interval = 0.1;
 
-    let res2 = attack_with_profile(spec, &profile);
+    start_profile("greedy");
+    let res = attack_with_profile(spec, &profile);
+    // FIXME: Turn this into a JSON output.
     println!("\n\n------------------");
-    let json = serde_json::to_string_pretty(&vec![res1, res2]).expect("can't serialize to json");
+    println!("Attack finished: {:?}", profile);
+    stop_profile();
+    let json = serde_json::to_string_pretty(&res).expect("can't serialize to json");
     println!("{}", json);
 }
 
@@ -273,17 +309,35 @@ fn baseline_greedy() {
 
 fn main() {
     pretty_env_logger::init_timed();
-    let args: Vec<String> = env::args().collect();
-    if args.len() > 1 {
-        match args[1].to_lowercase().trim() {
-            "greedy" => greedy_attacks(),
-            "porep" => porep_comparison(),
-            "baseline_greedy" => baseline_greedy(),
-            "baseline_valiant" => baseline_valiant(),
-            "theoretical" => theoretical_limit(),
-            _ => panic!("command not understood: choose greedy or porep"),
-        }
+    let matches = App::new("DRG Attacks")
+        .version("1.0")
+        .arg(
+            Arg::with_name("size")
+                .short("n")
+                .long("size-n")
+                .help("Size of graph expressed as a power of 2")
+                .default_value("10")
+                .takes_value(true),
+        )
+        .subcommand(SubCommand::with_name("greedy").about("Greedy attack"))
+        .subcommand(SubCommand::with_name("porep"))
+        .subcommand(SubCommand::with_name("baseline"))
+        .get_matches();
+
+    let n = value_t!(matches, "size", usize).unwrap();
+    assert!(n < 50, "graph size is too big (2^{})", n);
+    // FIXME: Use this argument for all attacks, not just Greedy (different
+    // attacks may use different default values).
+
+    if let Some(_) = matches.subcommand_matches("greedy") {
+        greedy_attacks(n);
+    } else if let Some(_) = matches.subcommand_matches("porep") {
+        porep_comparison();
+    } else if let Some(_) = matches.subcommand_matches("baseline") {
+        porep_comparison();
     } else {
+        eprintln!("No subcommand entered, running `porep_comparison`");
         porep_comparison();
     }
+    // FIXME: Can this be structured with a `match`?
 }

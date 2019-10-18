@@ -1,12 +1,13 @@
+use fnv::FnvHasher;
 use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha20Rng;
+use rand_chacha::ChaChaRng;
 use serde::{Deserialize, Serialize};
 use std::cmp::max;
 use std::collections::{HashMap, HashSet};
 use std::error;
 use std::fmt;
 use std::fs::File;
-use std::hash::Hash;
+use std::hash::{BuildHasherDefault, Hash};
 use std::io::BufReader;
 
 /// Data that completely specifies the `Graph` to be created. Many runs
@@ -65,6 +66,14 @@ impl Edge {
     }
 }
 
+/// Faster hasher than the default implementation to speed up hash set use
+/// according to:
+/// * https://blog.rust-lang.org/2016/03/02/Rust-1.7.html#library-stabilizations
+// FIXME: Research more up-to-date solutions (or drop the `HashSet` entirely).
+pub type FastHashSet<T> = HashSet<T, BuildHasherDefault<FnvHasher>>;
+pub type NodeSet = FastHashSet<Node>;
+pub type EdgeSet = FastHashSet<Edge>;
+
 // DRGAlgo represents which algorithm can be used to create the edges so a Graph is
 // a Depth Robust Graph
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
@@ -81,6 +90,97 @@ pub enum DRGAlgo {
     KConnector(usize),
 }
 
+/// Range used for a uniform distribution sample in `Rng::gen_range`: `[low, high)`.
+#[derive(Debug, PartialEq)]
+pub struct UniformSampleRange {
+    pub low: usize,
+    pub high: usize,
+}
+
+/// Ranges used for random sample of a generated parent. The `bucket` range is
+/// deterministic, it only depends on the meta node, while the `node` range is
+/// not, it depends on the bucket samples in the previous range.
+#[derive(Debug)]
+pub struct DRSampleRanges {
+    bucket: UniformSampleRange,
+    node: UniformSampleRange,
+}
+
+/// Abstraction over `Rng::gen_range`, which is the only thing we use from
+/// that interface, in order to replace it with a fake RNG for testing purposes.
+/// (We explicitly avoid reusing the `gen_range` name just to avoid multiple
+/// candidates issues.)
+trait UniformSampling {
+    fn sample_range(&mut self, range: &UniformSampleRange) -> usize;
+}
+impl<R> UniformSampling for R
+where
+    R: Rng,
+{
+    fn sample_range(&mut self, range: &UniformSampleRange) -> usize {
+        self.gen_range(range.low, range.high)
+    }
+}
+
+/// Exclusion set `S` of nodes that are removed from `G`. Encapsulated in this
+/// interface to evaluate optimizations to its implementation (e.g., set vs vec).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExclusionSet {
+    v: Vec<bool>,
+    size: usize,
+}
+
+impl ExclusionSet {
+    /// Create new set `S` for a specified `size`.
+    pub fn new_with_size(size: usize) -> Self {
+        ExclusionSet {
+            v: vec![false; size],
+            size: 0,
+        }
+    }
+
+    /// Create new set `S` for a specified `G`.
+    pub fn new(graph: &Graph) -> Self {
+        Self::new_with_size(graph.size())
+    }
+
+    pub fn from_nodes(graph: &Graph, nodes: Vec<Node>) -> Self {
+        let mut es = Self::new(graph);
+        for node in nodes {
+            es.insert(node);
+        }
+        es
+    }
+
+    pub fn contains(&self, node: Node) -> bool {
+        self.v[node]
+    }
+
+    pub fn insert(&mut self, node: Node) {
+        if !self.contains(node) {
+            self.v[node] = true;
+            self.size += 1;
+        }
+    }
+
+    pub fn size(&self) -> usize {
+        self.size
+    }
+
+    pub fn extend(&mut self, es: &ExclusionSet) {
+        assert!(
+            self.v.len() == es.v.len(),
+            "exclusion set len mismatch when extending"
+        );
+        for node in 0..self.v.len() {
+            if !self.contains(node) && es.contains(node) {
+                self.v[node] = true;
+                self.size += 1;
+            }
+        }
+    }
+}
+
 impl Graph {
     // new returns a new graph instance from the given parameters.
     // The graph's edges are not generated yet, call fill_drg to compute the edges.
@@ -88,13 +188,13 @@ impl Graph {
         // FIXME: To avoid changing too much code at the moment the `GraphSpec`
         //  is built here, but ideally the consumer should already provide it.
         let spec = GraphSpec { seed, size, algo };
-        let mut rng = ChaCha20Rng::from_seed(spec.seed);
+        let mut rng = ChaChaRng::from_seed(spec.seed);
 
         Self::new_from_rng(spec, &mut rng)
     }
 
     // FIXME: The RNG is not always necessary so this function is misleading.
-    pub fn new_from_rng(spec: GraphSpec, rng: &mut ChaCha20Rng) -> Graph {
+    pub fn new_from_rng(spec: GraphSpec, rng: &mut ChaChaRng) -> Graph {
         let mut g = Graph {
             spec,
             parents: Vec::with_capacity(spec.size),
@@ -150,12 +250,12 @@ impl Graph {
 
     // depth_exclude returns the depth of the graph when excluding the given
     // set of nodes
-    pub fn depth_exclude(&self, set: &HashSet<usize>) -> usize {
+    pub fn depth_exclude(&self, set: &ExclusionSet) -> usize {
         self.parents
             .iter()
             .enumerate()
             .fold(Vec::new(), |mut acc, (i, parents)| {
-                if set.contains(&i) {
+                if set.contains(i) {
                     // an excluded node has length 0
                     acc.push(0);
                     return acc;
@@ -163,7 +263,7 @@ impl Graph {
                 match parents
                     .iter()
                     // dont take parent's length if contained in set
-                    .filter(|&p| !set.contains(p))
+                    .filter(|&p| !set.contains(*p))
                     .map(|&p| acc[p] + 1)
                     .max()
                 {
@@ -199,7 +299,7 @@ impl Graph {
     // TODO: Is it possible to use traits to implement the equivalent of
     // function overloading as to get only one "depth_exclude" that works
     // for both types ?
-    pub fn depth_exclude_edges(&self, edges: &HashSet<Edge>) -> usize {
+    pub fn depth_exclude_edges(&self, edges: &EdgeSet) -> usize {
         // transform set of edges into list of parent relationship
         let edges_map = edges.iter().fold(HashMap::new(), |mut acc, edge| {
             (*acc.entry(edge.child).or_insert(Vec::new())).push(edge.parent);
@@ -232,18 +332,18 @@ impl Graph {
 
     // remove returns a new graph with the specified nodes removed
     // TODO slow path checking in O(n) - consider using bitset for nodes
-    pub fn remove(&self, nodes: &HashSet<usize>) -> Graph {
+    pub fn remove(&self, nodes: &ExclusionSet) -> Graph {
         let mut out = Vec::with_capacity(self.parents.len());
         for i in 0..self.parents.len() {
             let parents = self.parents.get(i).unwrap();
-            let new_parents = if nodes.contains(&i) {
+            let new_parents = if nodes.contains(i) {
                 // no parent for a deleted node
                 Vec::new()
             } else {
                 // only take parents which are not in the list of nodes
                 parents
                     .into_iter()
-                    .filter(|&parent| !nodes.contains(parent))
+                    .filter(|&parent| !nodes.contains(*parent))
                     .map(|&p| p)
                     .collect::<Vec<usize>>()
             };
@@ -271,7 +371,7 @@ impl Graph {
     // Implementation of the first algorithm BucketSample on page 22 of the
     // porep paper : https://web.stanford.edu/~bfisch/porep_short.pdf
     // It produces a degree-2 graph which is asymptotically depth-robust.
-    fn bucket_sample(&mut self, rng: &mut ChaCha20Rng) {
+    fn bucket_sample(&mut self, rng: &mut ChaChaRng) {
         for node in 0..self.parents.capacity() {
             let mut parents = Vec::new();
             match node {
@@ -307,7 +407,7 @@ impl Graph {
     // Implementation of the meta-graph construction algorithm described in page 22
     // of the porep paper https://web.stanford.edu/~bfisch/porep_short.pdf
     // It produces a degree-d graph on average.
-    fn meta_bucket(&mut self, degree: usize, rng: &mut ChaCha20Rng) {
+    fn meta_bucket(&mut self, degree: usize, rng: &mut ChaChaRng) {
         let m = degree - 1;
         for node in 0..self.parents.capacity() {
             let mut parents = Vec::with_capacity(degree);
@@ -324,38 +424,69 @@ impl Graph {
 
                     // similar to bucket_sample but we select m parents instead
                     // of just one
-                    for k in 0..m {
-                        // meta_idx represents a meta node in the meta graph
-                        // each node is represented m times, so we always take the
-                        // first node index to not fall on the same final index
-                        // graphically, it looks like
-                        // [ [node 0, ..., node 0, node 1 ... node 1, etc]
-                        // with each "bucket" of node having length
-                        let meta_idx = node * m;
-                        // ceil instead of floor() + 1
-                        let max_bucket = (meta_idx as f32).log2().ceil() as usize;
-                        // choose bucket index {1 ... ceil(log2(idx))}
-                        let i: usize = rng.gen_range(1, max_bucket + 1);
-                        // choose parent in range [min(2, 2^(i-1)), max(meta,2^i)[
-
-                        // min to avoid choosing a node which is higher than
-                        // the meta_idx - can happen since we can choose one
-                        // in the same bucket!
-                        let max = std::cmp::min(meta_idx, 1 << i);
-                        let min = std::cmp::max(2, max >> 1);
-                        assert!(max <= meta_idx);
-                        let meta_parent = meta_idx - rng.gen_range(min, max + 1);
-                        let real_parent = meta_parent / m;
-                        assert!(meta_parent < meta_idx);
-                        assert!(real_parent < node);
-                        parents.push(real_parent);
-                    }
+                    parents.extend((0..m).map(|_| Self::sample_parent_node(node, m, rng).0));
                 }
             }
             // filtering duplicate parents
             remove_duplicate(&mut parents);
             self.parents.push(parents);
         }
+    }
+
+    /// Core of the meta-graph construction (`meta_bucket`) isolated for audit and
+    /// test purposes: samples *one* parent of a node. Parameters:
+    /// * `node`: Index of the original node we're assigning a parent to.
+    /// * `m`: Target base degree for each node *without* counting direct predecessor.
+    /// * `rng`: RNG used *twice*, for bucket selection and posterior node selection
+    ///           (within that bucket).
+    /// Returns:
+    /// * Sampled parent.
+    /// * Ranges used in the uniform sample to arrive to that parent (for testing
+    ///    purposes only, can be safely ignore elsewhere).
+    // FIXME: Revisit the name.
+    fn sample_parent_node<R>(node: usize, m: usize, rng: &mut R) -> (usize, DRSampleRanges)
+    where
+        R: UniformSampling,
+    {
+        // meta_idx represents a meta node in the meta graph
+        // each node is represented m times, so we always take the
+        // first node index to not fall on the same final index
+        // graphically, it looks like
+        // [ [node 0, ..., node 0, node 1 ... node 1, etc]
+        // with each "bucket" of node having length
+        let meta_idx = node * m;
+        // ceil instead of floor() + 1
+        let max_bucket = (meta_idx as f32).log2().ceil() as usize;
+        // choose bucket index {1 ... ceil(log2(idx))}
+        let bucket_range = UniformSampleRange {
+            low: 1,
+            high: max_bucket + 1,
+        };
+        let i: usize = rng.sample_range(&bucket_range);
+        // choose parent in range [min(2, 2^(i-1)), max(meta,2^i)[
+
+        // min to avoid choosing a node which is higher than
+        // the meta_idx - can happen since we can choose one
+        // in the same bucket!
+        let max = std::cmp::min(meta_idx, 1 << i);
+        let min = std::cmp::max(2, max >> 1);
+        assert!(max <= meta_idx);
+        let node_range = UniformSampleRange {
+            low: min,
+            high: max + 1,
+        };
+        let meta_parent = meta_idx - rng.sample_range(&node_range);
+        let real_parent = meta_parent / m;
+        assert!(meta_parent < meta_idx);
+        assert!(real_parent < node);
+
+        (
+            real_parent,
+            DRSampleRanges {
+                bucket: bucket_range,
+                node: node_range,
+            },
+        )
     }
 
     /// Connect to `k` closest neighbors (see `KConnector`).
@@ -631,7 +762,7 @@ pub mod tests {
         let p1 = vec![vec![], vec![0], vec![0, 1], vec![2], vec![2, 3]];
         let g1 = graph_from(p1);
 
-        let nodes = HashSet::from_iter(vec![1, 3].iter().cloned());
+        let nodes = ExclusionSet::from_nodes(&g1, vec![1, 3]);
         let g3 = g1.remove(&nodes);
         let expected = vec![vec![], vec![], vec![0], vec![], vec![2]];
         assert_eq!(g3.parents.len(), 5);
@@ -663,13 +794,13 @@ pub mod tests {
     fn graph_depth_exclude() {
         let p1 = vec![vec![], vec![0], vec![1], vec![2], vec![3]];
         let g1 = graph_from(p1);
-        let s = HashSet::from_iter(vec![2]);
+        let s = ExclusionSet::from_nodes(&g1, vec![2]);
         assert_eq!(g1.depth_exclude(&s), 1);
 
         let g2 = Graph::new(17, TEST_SEED, DRGAlgo::MetaBucket(3));
-        let s = HashSet::from_iter(vec![2, 8, 15, 5, 10]);
+        let s = ExclusionSet::from_nodes(&g2, vec![2, 8, 15, 5, 10]);
         let depthex = g2.depth_exclude(&s);
-        assert!(depthex < (g2.cap() - s.len()));
+        assert!(depthex < (g2.cap() - s.size()));
         let g3 = g2.remove(&s);
         assert_eq!(g3.depth(), depthex);
 
@@ -677,10 +808,11 @@ pub mod tests {
         let g3 = Graph::new(size, TEST_SEED, DRGAlgo::MetaBucket(3));
         assert!(g3.depth() < size);
         let ssize = (2 ^ 6);
-        let mut rng = ChaCha20Rng::from_seed(TEST_SEED);
-        let sv = (0..ssize)
-            .map(|_| rng.gen_range(0, size))
-            .collect::<HashSet<usize>>();
+        let mut rng = ChaChaRng::from_seed(TEST_SEED);
+        let mut sv = ExclusionSet::new(&g3);
+        for _ in (0..ssize) {
+            sv.insert(rng.gen_range(0, size));
+        }
         assert!(g3.depth_exclude(&sv) < size);
     }
 
@@ -791,5 +923,48 @@ pub mod tests {
             parents: parents,
             children: vec![],
         }
+    }
+
+    /// Fake RNG used only to generate values for `gen_range` taken from
+    /// an internal pre-populated vector.
+    // FIXME: There's probably a cleaner way without the references and lifetimes.
+    struct FakeRNG<'a> {
+        iter: &'a mut dyn Iterator<Item = &'a usize>,
+    }
+    impl UniformSampling for FakeRNG<'_> {
+        fn sample_range(&mut self, range: &UniformSampleRange) -> usize {
+            let value = *self.iter.next().expect("run out of numbers");
+            let sample = (value % (range.high - range.low)) + range.low;
+            assert!(sample >= range.low);
+            assert!(sample < range.high);
+            sample
+        }
+    }
+
+    // Test the ranges over which BucketSample samples the bucket
+    // and the node.
+    // FIXME: The current numbers were just added after the fact to
+    //  match the observed output. We should reason to check if they
+    //  are correct and what should be expected in general.
+    #[test]
+    fn drsample_distributions_ranges() {
+        let v = vec![1, 2, 3, 4, 5, 6];
+        let i = v.iter();
+        let mut rng = FakeRNG {
+            iter: &mut i.cycle(),
+        };
+
+        let node = 10;
+        let m = 5;
+
+        let (_, ranges) = Graph::sample_parent_node(node, m, &mut rng);
+        assert_eq!(ranges.bucket, UniformSampleRange { low: 1, high: 7 });
+        assert_eq!(ranges.node, UniformSampleRange { low: 2, high: 5 });
+
+        let (_, ranges) = Graph::sample_parent_node(node, m, &mut rng);
+        assert_eq!(ranges.node, UniformSampleRange { low: 8, high: 17 });
+
+        let (_, ranges) = Graph::sample_parent_node(node, m, &mut rng);
+        assert_eq!(ranges.node, UniformSampleRange { low: 25, high: 51 });
     }
 }

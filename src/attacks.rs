@@ -9,7 +9,7 @@ use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::Result;
 
-use crate::graph::{DRGAlgo, Edge, Graph, GraphSpec};
+use crate::graph::{DRGAlgo, Edge, EdgeSet, ExclusionSet, Graph, GraphSpec, Node, NodeSet};
 use crate::utils;
 use rayon::prelude::*;
 
@@ -31,7 +31,7 @@ pub enum DepthReduceSet {
     GreedySize(usize, GreedyParams),
 }
 
-pub fn depth_reduce(g: &mut Graph, drs: DepthReduceSet) -> HashSet<usize> {
+pub fn depth_reduce(g: &mut Graph, drs: DepthReduceSet) -> ExclusionSet {
     match drs {
         DepthReduceSet::ValiantDepth(_) => valiant_reduce(g, drs),
         DepthReduceSet::ValiantSize(_) => valiant_reduce(g, drs),
@@ -195,7 +195,7 @@ pub fn attack(g: &mut Graph, attack: DepthReduceSet) -> SingleAttackResult {
     let depth = g.depth_exclude(&set);
     let result = SingleAttackResult {
         depth: depth as f64 / g.size() as f64,
-        exclusion_size: set.len() as f64 / g.size() as f64,
+        exclusion_size: set.size() as f64 / g.size() as f64,
     };
     println!("{}", result);
     println!("\t-> time elapsed: {:?}", duration);
@@ -294,10 +294,10 @@ impl GreedyParams {
 }
 
 // greedy_reduce implements the Algorithm 5 of https://eprint.iacr.org/2018/944.pdf
-fn greedy_reduce(g: &mut Graph, d: DepthReduceSet) -> HashSet<usize> {
+fn greedy_reduce(g: &mut Graph, d: DepthReduceSet) -> ExclusionSet {
     match d {
         DepthReduceSet::GreedyDepth(depth, p) => {
-            greedy_reduce_main(g, p, &|set: &HashSet<usize>, g: &mut Graph| {
+            greedy_reduce_main(g, p, &|set: &ExclusionSet, g: &mut Graph| {
                 g.depth_exclude(set) > depth
             })
         }
@@ -309,9 +309,7 @@ fn greedy_reduce(g: &mut Graph, d: DepthReduceSet) -> HashSet<usize> {
             let mut p = p.clone();
             p.k = std::cmp::min(p.k, (size as f32 * 0.01).ceil() as usize);
 
-            greedy_reduce_main(g, p, &|set: &HashSet<usize>, g: &mut Graph| {
-                set.len() < size
-            })
+            greedy_reduce_main(g, p, &|set: &ExclusionSet, g: &mut Graph| set.size() < size)
         }
         _ => panic!("invalid DepthReduceSet option"),
     }
@@ -320,11 +318,11 @@ fn greedy_reduce(g: &mut Graph, d: DepthReduceSet) -> HashSet<usize> {
 fn greedy_reduce_main(
     g: &mut Graph,
     p: GreedyParams,
-    f: &Fn(&HashSet<usize>, &mut Graph) -> bool,
-) -> HashSet<usize> {
-    let mut s = HashSet::new();
+    f: &Fn(&ExclusionSet, &mut Graph) -> bool,
+) -> ExclusionSet {
+    let mut s = ExclusionSet::new(g);
     g.children_project();
-    let mut inradius: HashSet<usize> = HashSet::new();
+    let mut inradius: NodeSet = NodeSet::default();
     while f(&s, g) {
         // TODO use p.length when more confidence in the trick
         let incidents = count_paths(g, &s, &p);
@@ -347,8 +345,8 @@ fn greedy_reduce_main(
 // to remove, it simply adds them to the given set.
 fn append_removal(
     g: &Graph,
-    set: &mut HashSet<usize>,
-    inradius: &mut HashSet<usize>,
+    set: &mut ExclusionSet,
+    inradius: &mut NodeSet,
     incidents: &Vec<Pair>,
     params: &GreedyParams,
 ) {
@@ -414,13 +412,13 @@ fn append_removal(
         "\t-> added {}/{} nodes in |S| = {}, depth(G-S) = {} = {:.3}n",
         count,
         k,
-        set.len(),
+        set.size(),
         d,
         (d as f32) / (g.cap() as f32),
     );
 }
 
-fn add_direct_nodes(g: &Graph, v: usize, rad: &HashSet<usize>, mut f: impl FnMut(usize)) {
+fn add_direct_nodes(g: &Graph, v: usize, rad: &NodeSet, mut f: impl FnMut(usize)) {
     // add all direct parent
     g.parents()[v]
         .iter()
@@ -456,48 +454,57 @@ fn add_direct_nodes(g: &Graph, v: usize, rad: &HashSet<usize>, mut f: impl FnMut
 // of the given node. Size of the radius is given radius. It corresponds to the
 // under-specified function "UpdateNodesInRadius" in algo. 6 of
 // https://eprint.iacr.org/2018/944.pdf
-fn update_radius_set(g: &Graph, node: usize, inradius: &mut HashSet<usize>, p: &GreedyParams) {
+//// NOTE: The `radius` shouldn't change across calls for the same `inradius` set,
+// that is, if we already have a node in `inradius` then we won't look for it
+// again because we assume we already found all its closest nodes within a
+// specified `radius` (if the `radius` increased across calls we would be missing
+// nodes that were farther away in comparison to earlier calls).
+fn update_radius_set(g: &Graph, node: usize, inradius: &mut NodeSet, p: &GreedyParams) {
     let radius = p.radius;
-    //let add_direct_nodes = |v: usize, rad: &HashSet<usize>, f: &FnMut(usize)| -> HashSet<usize> {
+    let mut closests: Vec<Node> = Vec::with_capacity(radius * 10);
+    // FIXME: We should be able to better estimate the size of this scratch
+    //  vector based on the `radius` and the average degree of the nodes.
+    let mut tosearch: Vec<Node> = Vec::with_capacity(closests.capacity());
     // insert first the given node and then add the close nodes
     inradius.insert(node);
-    let mut tosearch = HashSet::new();
-    tosearch.insert(node);
+    tosearch.push(node);
     // do it recursively "radius" times
     for i in 0..radius {
         // grab all direct nodes of those already in radius "i"
-        // FIXME: maybe delete the code since parallel takes more time here
-        let closests = if p.parallel && false {
+        closests = if p.parallel {
             tosearch
                 .par_iter()
                 .fold(
-                    || HashSet::new(),
+                    || Vec::new(),
                     |mut acc, idx| {
-                        add_direct_nodes(g, *idx, inradius, |x| {
-                            acc.insert(x);
-                        });
+                        add_direct_nodes(g, *idx, inradius, |x| {acc.push(x);});
                         acc
                     },
                 )
                 .reduce(
-                    || HashSet::new(),
+                    || Vec::new(),
                     |mut acc, set| {
+                        // would be nice to use following but rayon doesn't
+                        // accept to use &mut set
+                        //acc.append(&mut set);
                         acc.extend(set);
                         acc
                     },
                 )
         } else {
-            let mut c = HashSet::new();
+            closests.clear();
             // grab all direct nodes of those already in radius "i"
             for &v in tosearch.iter() {
-                add_direct_nodes(g, v, inradius, |x| {
-                    c.insert(x);
-                });
+                add_direct_nodes(g, v, inradius, |x| { closests.push(x);});
             }
-            c
+            closests
         };
-        tosearch = closests.clone();
-        inradius.extend(closests);
+        tosearch.clear();
+        for &mut node in &mut closests {
+            if inradius.insert(node) {
+                tosearch.push(node);
+            }
+        }
         trace!(
             "update radius {}: {} new nodes, total {}",
             i,
@@ -533,7 +540,7 @@ impl PartialEq for Pair {
 //      Index is the the index of the node, value is the paths count.
 // 2. the top k nodes indexes that have the higest incident paths
 //      The number of incident path is not given.
-fn count_paths(g: &Graph, s: &HashSet<usize>, p: &GreedyParams) -> Vec<Pair> {
+fn count_paths(g: &Graph, s: &ExclusionSet, p: &GreedyParams) -> Vec<Pair> {
     if p.use_degree {
         return count_paths_degree(g, s, p);
     }
@@ -544,7 +551,7 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, p: &GreedyParams) -> Vec<Pair> {
     // counting phase of all starting/ending paths of all length
 
     for node in 0..g.size() {
-        if !s.contains(&node) {
+        if !s.contains(node) {
             // initializes the tables with 1 for nodes present in G - S
             ending_paths[node][0] = 1;
             starting_paths[node][0] = 1;
@@ -556,7 +563,7 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, p: &GreedyParams) -> Vec<Pair> {
             // checking each parents (vs only checking direct + 1parent in C#)
             // no ending path for node i if the parent is contained in S
             // since G - S doesn't have this parent
-            if !s.contains(&e.parent) {
+            if !s.contains(e.parent) {
                 ending_paths[e.child][d] += ending_paths[e.parent][d - 1];
 
                 // difference vs the pseudo code: like in C#, increase parent count
@@ -579,11 +586,11 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, p: &GreedyParams) -> Vec<Pair> {
         )
     };
 
-    // FIXME: this specific part doesn't improve
+    // FIXME: this specific part doesn't improve much
     let mut incidents = if p.parallel {
         (0..g.size())
             .into_par_iter()
-            .filter(|n| !s.contains(n))
+            .filter(|&n| !s.contains(n))
             .fold(
                 || Vec::new(),
                 |mut acc, n| {
@@ -599,7 +606,7 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, p: &GreedyParams) -> Vec<Pair> {
                 },
             )
     } else {
-        (0..g.size()).into_iter().filter(|n| !s.contains(n)).fold(
+        (0..g.size()).into_iter().filter(|&n| !s.contains(n)).fold(
             Vec::with_capacity(g.size()),
             |mut acc, n| {
                 acc.push(incident_of(n));
@@ -617,17 +624,20 @@ fn count_paths(g: &Graph, s: &HashSet<usize>, p: &GreedyParams) -> Vec<Pair> {
     incidents
 }
 
-fn count_paths_degree(g: &Graph, s: &HashSet<usize>, p: &GreedyParams) -> Vec<Pair> {
-    let mut v = Vec::with_capacity(g.size() - s.len());
+fn count_paths_degree(g: &Graph, s: &ExclusionSet, p: &GreedyParams) -> Vec<Pair> {
+    let mut v = Vec::with_capacity(g.size() - s.size());
     g.for_each_node(|&node| {
-        if s.contains(&node) {
+        if s.contains(node) {
             return;
         }
         let nc = g.children()[node]
             .iter()
-            .filter(|&p| !s.contains(p))
+            .filter(|&p| !s.contains(*p))
             .count();
-        let np = g.parents()[node].iter().filter(|&p| !s.contains(p)).count();
+        let np = g.parents()[node]
+            .iter()
+            .filter(|&p| !s.contains(*p))
+            .count();
         v.push(Pair(node, nc + np));
     });
     v.sort_by_key(|a| Reverse(a.1));
@@ -638,8 +648,8 @@ fn count_paths_degree(g: &Graph, s: &HashSet<usize>, p: &GreedyParams) -> Vec<Pa
 /// For a graph G with m edges, 2^k vertices, and \delta in-ground degree,
 /// it returns a set S such that depth(G-S) <= 2^k-t
 /// It iterates over t until depth(G-S) <= depth.
-fn valiant_ab16(g: &Graph, target: usize) -> HashSet<usize> {
-    let mut s = HashSet::new();
+fn valiant_ab16(g: &Graph, target: usize) -> ExclusionSet {
+    let mut s = ExclusionSet::new(g);
     // FIXME can we avoid that useless first copy ?
     let mut curr = g.remove(&s);
     loop {
@@ -653,7 +663,7 @@ fn valiant_ab16(g: &Graph, target: usize) -> HashSet<usize> {
         let ki = (di as f32).log2().ceil() as usize;
         let max_size = mi / ki;
         // take the minimum partition which has a size <= mi/ki
-        let chosen: &HashSet<Edge> = partitions
+        let chosen: &EdgeSet = partitions
             .iter()
             .filter(|&partition| partition.len() > 0)
             .filter(|&partition| partition.len() <= max_size)
@@ -664,10 +674,8 @@ fn valiant_ab16(g: &Graph, target: usize) -> HashSet<usize> {
         let new_depth = curr.depth_exclude_edges(chosen);
         assert!(new_depth <= (di >> 1));
         // G_i+1 = G_i - S_i  where S_i is set of origin nodes in chosen partition
-        let si = chosen
-            .iter()
-            .map(|edge| edge.parent)
-            .collect::<HashSet<usize>>();
+        let mut si = ExclusionSet::new(&g);
+        chosen.iter().for_each(|edge| si.insert(edge.parent));
         trace!(
         "m/k = {}/{} = {}, chosen = {:?}, new_depth {}, curr.depth() {}, curr.dpeth_exclude {}, new edges {}, si {:?}",
         mi,
@@ -681,7 +689,7 @@ fn valiant_ab16(g: &Graph, target: usize) -> HashSet<usize> {
         si,
         );
         curr = curr.remove(&si);
-        s.extend(si);
+        s.extend(&si);
 
         if curr.depth() <= target {
             trace!("\t -> breaking out, depth(G-S) = {}", g.depth_exclude(&s));
@@ -691,29 +699,29 @@ fn valiant_ab16(g: &Graph, target: usize) -> HashSet<usize> {
     return s;
 }
 
-fn valiant_reduce(g: &Graph, d: DepthReduceSet) -> HashSet<usize> {
+fn valiant_reduce(g: &Graph, d: DepthReduceSet) -> ExclusionSet {
     match d {
         // valiant_reduce returns a set S such that depth(G - S) < target.
         // It implements the algo 8 in the https://eprint.iacr.org/2018/944.pdf paper.
         DepthReduceSet::ValiantDepth(depth) => {
-            valiant_reduce_main(g, &|set: &HashSet<usize>| g.depth_exclude(set) > depth)
+            valiant_reduce_main(g, &|set: &ExclusionSet| g.depth_exclude(set) > depth)
         }
         DepthReduceSet::ValiantSize(size) => {
-            valiant_reduce_main(g, &|set: &HashSet<usize>| set.len() < size)
+            valiant_reduce_main(g, &|set: &ExclusionSet| set.size() < size)
         }
         DepthReduceSet::ValiantAB16(depth) => valiant_ab16(g, depth),
         _ => panic!("that should not happen"),
     }
 }
 
-fn valiant_reduce_main(g: &Graph, f: &Fn(&HashSet<usize>) -> bool) -> HashSet<usize> {
+fn valiant_reduce_main(g: &Graph, f: &Fn(&ExclusionSet) -> bool) -> ExclusionSet {
     let partitions = valiant_partitions(g);
     // TODO replace by a simple bitset or boolean vec
     let mut chosen: Vec<usize> = Vec::new();
-    let mut s = HashSet::new();
+    let mut s = ExclusionSet::new(g);
     // returns the smallest next partition unchosen
     // mut is required because it changes chosen which is mut
-    let mut find_next = || -> &HashSet<Edge> {
+    let mut find_next = || -> &EdgeSet {
         match partitions
             .iter()
             .enumerate()
@@ -734,10 +742,7 @@ fn valiant_reduce_main(g: &Graph, f: &Fn(&HashSet<usize>) -> bool) -> HashSet<us
     while f(&s) {
         let partition = find_next();
         // add the origin node for each edges in the chosen partition
-        s.extend(partition.iter().fold(Vec::new(), |mut acc, edge| {
-            acc.push(edge.parent);
-            acc
-        }));
+        partition.iter().for_each(|edge| s.insert(edge.parent));
     }
 
     return s;
@@ -746,11 +751,11 @@ fn valiant_reduce_main(g: &Graph, f: &Fn(&HashSet<usize>) -> bool) -> HashSet<us
 // valiant_partitions returns the sets E_i and S_i from the given graph
 // according to the definition algorithm 8 from
 // https://eprint.iacr.org/2018/944.pdf .
-fn valiant_partitions(g: &Graph) -> Vec<HashSet<Edge>> {
+fn valiant_partitions(g: &Graph) -> Vec<EdgeSet> {
     let bs = utils::node_bitsize();
     let mut eis = Vec::with_capacity(bs);
     for _ in 0..bs {
-        eis.push(HashSet::new());
+        eis.push(EdgeSet::default());
     }
 
     g.for_each_edge(|edge| {
@@ -809,7 +814,7 @@ mod test {
             ..GreedyParams::default()
         };
         let s = greedy_reduce(&mut graph, DepthReduceSet::GreedyDepth(2, params));
-        assert_eq!(s, HashSet::from_iter(vec![3, 4]));
+        assert_eq!(s, ExclusionSet::from_nodes(&graph, vec![3, 4]));
         let params = GreedyParams {
             k: 1,
             radius: 1,
@@ -825,7 +830,7 @@ mod test {
         //         -> iteration 1 : node 3 inserted -> inradius {3, 1, 2, 4}
         //         -> added 1/6 nodes in |S| = 2, depth(G-S) = 2 = 0.333n
         //
-        assert_eq!(s, HashSet::from_iter(vec![2, 3]));
+        assert_eq!(s, ExclusionSet::from_nodes(&graph, vec![2, 3]));
         println!("\n\n\n ------\n\n\n");
         let params = GreedyParams {
             k: 1,
@@ -842,7 +847,7 @@ mod test {
         // -> added by default one node 3
         // -> added 1/1 nodes in |S| = 2, depth(G-S) = 2 = 0.333n
         //
-        assert_eq!(s, HashSet::from_iter(vec![3, 2]));
+        assert_eq!(s, ExclusionSet::from_nodes(&graph, vec![3, 2]));
 
         let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
         let size = (2 as usize).pow(10);
@@ -871,7 +876,7 @@ mod test {
     fn test_append_removal_node() {
         let mut graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
         graph.children_project();
-        let mut s = HashSet::new();
+        let mut s = ExclusionSet::new(&graph);
         let mut params = GreedyParams {
             k: 3,
             length: 2,
@@ -880,11 +885,11 @@ mod test {
         };
         println!("graph: {:?}", graph);
         let incidents = count_paths(&graph, &s, &params);
-        let mut inradius = HashSet::new();
+        let mut inradius = NodeSet::default();
         append_removal(&graph, &mut s, &mut inradius, &incidents, &params);
         // incidents: [Pair(2, 7), Pair(4, 7), Pair(3, 6), Pair(0, 5), Pair(1, 5), Pair(5, 3)]
         //  only one value since radius == 0
-        assert!(s.contains(&4));
+        assert!(s.contains(4));
 
         params.radius = 1;
         let incidents = count_paths(&graph, &s, &params);
@@ -898,7 +903,7 @@ mod test {
         //          "old behavior" only loops k times
         // NOTE:
         //  - 4 is already present thanks to last call
-        assert_eq!(s, HashSet::from_iter(vec![4, 0]));
+        assert_eq!(s, ExclusionSet::from_nodes(&graph, vec![4, 0]));
         // TODO probably more tests with larger graph
     }
 
@@ -907,7 +912,7 @@ mod test {
         let mut graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
         graph.children_project();
         let node = 2;
-        let mut inradius = HashSet::new();
+        let mut inradius = NodeSet::default();
         let mut p = GreedyParams {
             radius: 1,
             ..GreedyParams::default()
@@ -916,6 +921,9 @@ mod test {
         update_radius_set(&graph, node, &mut inradius, &p);
         assert_eq!(inradius, HashSet::from_iter(vec![0, 1, 2, 3, 4]));
         p.radius = 2;
+        // Start another search with a bigger `radius`, clear previous
+        // `inradius` to look for the nodes all over again.
+        inradius.clear();
         update_radius_set(&graph, node, &mut inradius, &p);
         assert_eq!(inradius, HashSet::from_iter(vec![0, 1, 2, 3, 4, 5]));
 
@@ -925,6 +933,7 @@ mod test {
         p.radius = 1;
         update_radius_set(&graph, node, &mut inradius, &p);
         assert_eq!(inradius, HashSet::from_iter(vec![0, 1, 2, 3, 4]));
+        inradius.clear();
         p.radius = 2;
         update_radius_set(&graph, node, &mut inradius, &p);
         assert_eq!(inradius, HashSet::from_iter(vec![0, 1, 2, 3, 4, 5]));
@@ -940,7 +949,7 @@ mod test {
         let mut graph = graph::Graph::new(size, graph::tests::TEST_SEED, DRGAlgo::MetaBucket(deg));
         graph.children_project();
         let node = size / 2;
-        let mut inradius = HashSet::new();
+        let mut inradius = NodeSet::default();
         let p = GreedyParams {
             radius: radius,
             parallel: false,
@@ -957,7 +966,7 @@ mod test {
         let mut graph = graph::Graph::new(size, graph::tests::TEST_SEED, DRGAlgo::MetaBucket(deg));
         graph.children_project();
         let node = size / 2;
-        let mut inradius = HashSet::new();
+        let mut inradius = NodeSet::default();
         let p = GreedyParams {
             radius: radius,
             parallel: true,
@@ -977,7 +986,7 @@ mod test {
         );
         let length = 10;
         let k = 400;
-        let s = HashSet::new();
+        let s = ExclusionSet::new(&graph);
         let p = GreedyParams {
             k: k,
             length: length,
@@ -997,7 +1006,7 @@ mod test {
         );
         let length = 10;
         let k = 400;
-        let s = HashSet::new();
+        let s = ExclusionSet::new(&graph);
         let p = GreedyParams {
             k: k,
             length: length,
@@ -1012,7 +1021,7 @@ mod test {
         let graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
         let target_length = 2;
         // test with empty set to remove
-        let mut s = HashSet::new();
+        let mut s = ExclusionSet::new(&graph);
         let p = GreedyParams {
             k: 3,
             length: 2,
@@ -1074,7 +1083,7 @@ mod test {
                     length: length,
                     ..GreedyParams::default()
                 };
-                let incidents = count_paths(&g, &mut HashSet::new(), &p);
+                let incidents = count_paths(&g, &mut ExclusionSet::new(&g), &p);
                 assert_eq!(
                     // find the value which corresponds to the middle node
                     incidents.iter().find(|&p| p.0 == g.size() / 2).unwrap().1,
@@ -1089,14 +1098,14 @@ mod test {
     fn test_valiant_reduce_depth() {
         let graph = graph::tests::graph_from(TEST_PARENTS.to_vec());
         let set = valiant_reduce(&graph, DepthReduceSet::ValiantDepth(2));
-        assert_eq!(set, HashSet::from_iter(vec![0, 2, 3, 4, 6]));
+        assert_eq!(set, ExclusionSet::from_nodes(&graph, vec![0, 2, 3, 4, 6]));
     }
 
     #[test]
     fn test_valiant_reduce_size() {
         let graph = graph::tests::graph_from(TEST_PARENTS.to_vec());
         let set = valiant_reduce(&graph, DepthReduceSet::ValiantSize(3));
-        assert_eq!(set, HashSet::from_iter(vec![0, 2, 3, 4, 6]));
+        assert_eq!(set, ExclusionSet::from_nodes(&graph, vec![0, 2, 3, 4, 6]));
     }
 
     #[test]
@@ -1118,7 +1127,7 @@ mod test {
         assert!(g.depth_exclude(&set) < target);
         // 3->4 differs at 3rd bit and they're the only one differing at that bit
         // so set s contains origin node 3
-        assert_eq!(set, HashSet::from_iter(vec![3]));
+        assert_eq!(set, ExclusionSet::from_nodes(&g, vec![3]));
 
         let g = Graph::new(TEST_SIZE, graph::tests::TEST_SEED, DRGAlgo::MetaBucket(2));
         let target = TEST_SIZE / 4;
