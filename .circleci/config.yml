@@ -2,8 +2,7 @@ version: 2
 jobs:
   build:
     docker:
-        #- image: circleci/rust:latest
-         - image: zrzka/rust-circleci
+        - image: circleci/rust:latest
     steps:
       - checkout
       - run: cargo check --all-targets --all --bins --tests --benches
