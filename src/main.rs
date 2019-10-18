@@ -135,6 +135,7 @@ fn greedy_attacks() {
     let json = serde_json::to_string_pretty(&vec![res1, res2]).expect("can't serialize to json");
     println!("{}", json);
 }
+
 fn baseline_valiant() {
     println!("Baseline VALIANT computation for target size [0.10,0.20,0.30]");
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
@@ -168,13 +169,66 @@ fn baseline_valiant() {
     println!("{}", json);
 }
 
+fn theoretical_limit() {
+    let ts = 0.0000115;
+    let td = 0.03;
+    println!("Comparing against theoretical limit:");
+    let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
+    let n = 20;
+    let size = (2 as usize).pow(n);
+    let deg = 6;
+    let spec = GraphSpec {
+        size,
+        seed: random_bytes,
+        algo: DRGAlgo::MetaBucket(deg),
+    };
+
+
+    let mut greed_params = GreedyParams {
+        k: GreedyParams::k_ratio(n as usize),
+        radius: 4,
+        reset: true,
+        length: 10,
+        iter_topk: true,
+        use_degree: true,
+        parallel: true,
+    };
+     
+    let mut profile = AttackProfile::from_attack(
+        DepthReduceSet::GreedySize((ts * size as f64) as usize, greed_params.clone()),
+        size,
+    );
+    profile.runs = 3;
+    profile.range.start = 0.0000115;
+    profile.range.end = 0.0000116;
+    profile.range.interval = 0.1;
+
+    let res0 = attack_with_profile(spec, &profile);
+    println!("json: {}",serde_json::to_string_pretty(&res0).expect("can't serialize to json"));
+
+    let mut profile = AttackProfile::from_attack(
+        DepthReduceSet::GreedyDepth((td * size as f64) as usize, greed_params.clone()),
+        size,
+    );
+    profile.runs = 3;
+    profile.range.start = 0.03;
+    profile.range.end = 0.04;
+    profile.range.interval = 0.01;
+
+    let res1 = attack_with_profile( spec, &profile);
+    println!("json: {}",serde_json::to_string_pretty(&vec![res0,res1]).expect("can't serialize to json"));
+
+
+
+}
+
 fn baseline_greedy() {
     println!("Baseline computation for target size [0.10,0.20,0.30]");
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
     let n = 20;
     let size = (2 as usize).pow(n);
     let deg = 6;
-    let target_size = (0.30 * size as f64) as usize;
+    let target_depth = (0.001 * size as f64) as usize;
     let spec = GraphSpec {
         size,
         seed: random_bytes,
@@ -187,23 +241,33 @@ fn baseline_greedy() {
         reset: true,
         length: 10,
         iter_topk: true,
-        use_degree: false,
-        parallel: false,
+        use_degree: true,
+        parallel: true,
     };
-
+     
     let mut profile = AttackProfile::from_attack(
-        DepthReduceSet::GreedyDepth(target_size, greed_params.clone()),
+        DepthReduceSet::GreedyDepth(target_depth, greed_params.clone()),
         size,
     );
     profile.runs = 3;
-    profile.range.start = 0.10;
-    profile.range.end = 0.31;
-    profile.range.interval = 0.10;
+    profile.range.start = 0.15;
+    profile.range.end = 0.26;
+    profile.range.interval = 0.05;
 
-    let res = attack_with_profile(spec, &profile);
-    println!("\n\n------------------");
-    println!("Attack finished: {:?}", profile);
-    let json = serde_json::to_string_pretty(&res).expect("can't serialize to json");
+
+    let res1 = attack_with_profile(spec, &profile);
+
+    let mut profile = AttackProfile::from_attack(
+        DepthReduceSet::GreedySize(target_depth, greed_params.clone()),
+        size,
+    );
+    profile.runs = 3;
+    profile.range.start = 0.15;
+    profile.range.end = 0.31;
+    profile.range.interval = 0.05;
+    let res2 = attack_with_profile(spec, &profile);
+
+    let json = serde_json::to_string_pretty(&vec![res1,res2]).expect("can't serialize to json");
     println!("{}", json);
 }
 
@@ -216,6 +280,7 @@ fn main() {
             "porep" => porep_comparison(),
             "baseline_greedy" => baseline_greedy(),
             "baseline_valiant" => baseline_valiant(),
+            "theoretical" => theoretical_limit(),
             _ => panic!("command not understood: choose greedy or porep"),
         }
     } else {
