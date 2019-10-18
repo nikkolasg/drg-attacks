@@ -6,4 +6,5 @@ jobs:
          - image: zrzka/rust-circleci
     steps:
       - checkout
-      - run: rustup run nightly cargo test
+      - run: cargo check --all-targets --all --bins --tests --benches
+      - run: cargo test

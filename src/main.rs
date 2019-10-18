@@ -1,17 +1,15 @@
-#![feature(test)]
+#![deny(warnings)]
 mod attacks;
 pub mod graph;
 mod utils;
 use attacks::{attack, attack_with_profile, AttackProfile, DepthReduceSet, GreedyParams};
 use graph::{DRGAlgo, Graph, GraphSpec};
 use rand::Rng;
-use serde_json::Result;
-use std::env;
-// used by test module...
+
 #[macro_use]
+#[cfg(test)]
 extern crate lazy_static;
 extern crate rayon;
-extern crate test;
 
 use clap::{value_t, App, Arg, SubCommand};
 #[cfg(feature = "cpu-profile")]
@@ -114,8 +112,7 @@ fn porep_comparison() {
 fn greedy_attacks(n: usize) {
     println!("Greedy Attacks parameters");
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
-    let n = 8;
-    let size = (2 as usize).pow(n);
+    let size = (2 as usize).pow(n as u32);
     let deg = 6;
     let target_size = (0.30 * size as f64) as usize;
     let spec = GraphSpec {
@@ -126,7 +123,7 @@ fn greedy_attacks(n: usize) {
     let runs = 10;
     //attack(&mut g1, DepthReduceSet::ValiantDepth(depth));
 
-    let mut greed_params = GreedyParams {
+    let greed_params = GreedyParams {
         k: 50,
         radius: 4,
         reset: true,
@@ -140,19 +137,6 @@ fn greedy_attacks(n: usize) {
         parallel: false,
     };
 
-    let mut profile = AttackProfile::from_attack(
-        DepthReduceSet::GreedySize(target_size, greed_params.clone()),
-        size,
-    );
-    // FIXME: Build the profile in one statement instead of making it mutable.
-    profile.runs = runs;
-    profile.range.start = 0.2;
-    profile.range.end = 0.5;
-    profile.range.interval = 0.1;
-
-    let res1 = attack_with_profile(spec, &profile);
-
-    greed_params.length = 16;
     let mut profile = AttackProfile::from_attack(
         DepthReduceSet::GreedySize(target_size, greed_params.clone()),
         size,
@@ -220,7 +204,7 @@ fn theoretical_limit() {
     };
 
 
-    let mut greed_params = GreedyParams {
+    let greed_params = GreedyParams {
         k: GreedyParams::k_ratio(n as usize),
         radius: 4,
         reset: true,
@@ -271,7 +255,7 @@ fn baseline_greedy() {
         algo: DRGAlgo::MetaBucket(deg),
     };
 
-    let mut greed_params = GreedyParams {
+    let greed_params = GreedyParams {
         k: GreedyParams::k_ratio(n as usize),
         radius: 4,
         reset: true,
@@ -321,7 +305,9 @@ fn main() {
         )
         .subcommand(SubCommand::with_name("greedy").about("Greedy attack"))
         .subcommand(SubCommand::with_name("porep"))
-        .subcommand(SubCommand::with_name("baseline"))
+        .subcommand(SubCommand::with_name("baseline_greedy"))
+        .subcommand(SubCommand::with_name("baseline_valiant"))
+        .subcommand(SubCommand::with_name("theory"))
         .get_matches();
 
     let n = value_t!(matches, "size", usize).unwrap();
@@ -333,8 +319,12 @@ fn main() {
         greedy_attacks(n);
     } else if let Some(_) = matches.subcommand_matches("porep") {
         porep_comparison();
-    } else if let Some(_) = matches.subcommand_matches("baseline") {
-        porep_comparison();
+    } else if let Some(_) = matches.subcommand_matches("theory") {
+        theoretical_limit();
+    } else if let Some(_) = matches.subcommand_matches("baseline_greedy") {
+        baseline_greedy();
+    } else if let Some(_) = matches.subcommand_matches("baseline_valiant") {
+        baseline_valiant();
     } else {
         eprintln!("No subcommand entered, running `porep_comparison`");
         porep_comparison();

@@ -8,7 +8,6 @@ use std::error;
 use std::fmt;
 use std::fs::File;
 use std::hash::{BuildHasherDefault, Hash};
-use std::io::BufReader;
 
 /// Data that completely specifies the `Graph` to be created. Many runs
 /// from the save stored data should produce the same `Graph` always
@@ -616,6 +615,7 @@ impl Graph {
     /// set attacks are using the property that different buckets have different
     /// highly variable sizes, DRSample offers a core protection against these
     /// attacks by forcing the buckets to have ~ equal sizes.
+    #[cfg(test)]
     fn buckets(&self) -> Vec<usize> {
         let log = (self.cap() as f32).log2().ceil() as usize;
         let mut ret = vec![0; log + 1];
@@ -807,10 +807,10 @@ pub mod tests {
         let size = (2 as usize).pow(10);
         let g3 = Graph::new(size, TEST_SEED, DRGAlgo::MetaBucket(3));
         assert!(g3.depth() < size);
-        let ssize = (2 ^ 6);
+        let ssize = 2 ^ 6;
         let mut rng = ChaChaRng::from_seed(TEST_SEED);
         let mut sv = ExclusionSet::new(&g3);
-        for _ in (0..ssize) {
+        for _ in 0..ssize {
             sv.insert(rng.gen_range(0, size));
         }
         assert!(g3.depth_exclude(&sv) < size);
