@@ -1,13 +1,13 @@
+#![deny(warnings)]
 mod attacks;
 pub mod graph;
 mod utils;
 use attacks::{attack, attack_with_profile, AttackProfile, DepthReduceSet, GreedyParams};
 use graph::{DRGAlgo, Graph, GraphSpec};
 use rand::Rng;
-use serde_json::Result;
-use std::env;
-// used by test module...
+
 #[macro_use]
+#[cfg(test)]
 extern crate lazy_static;
 
 use clap::{value_t, App, Arg, SubCommand};
@@ -121,7 +121,7 @@ fn greedy_attacks(n: usize) {
     };
     //attack(&mut g1, DepthReduceSet::ValiantDepth(depth));
 
-    let mut greed_params = GreedyParams {
+    let greed_params = GreedyParams {
         k: 50,
         radius: 4,
         reset: true,
@@ -167,7 +167,7 @@ fn baseline() {
         algo: DRGAlgo::MetaBucket(deg),
     };
 
-    let mut greed_params = GreedyParams {
+    let greed_params = GreedyParams {
         k: GreedyParams::k_ratio(n as usize),
         radius: 4,
         reset: true,
@@ -220,7 +220,7 @@ fn main() {
     } else if let Some(_) = matches.subcommand_matches("porep") {
         porep_comparison();
     } else if let Some(_) = matches.subcommand_matches("baseline") {
-        porep_comparison();
+        baseline();
     } else {
         eprintln!("No subcommand entered, running `porep_comparison`");
         porep_comparison();
