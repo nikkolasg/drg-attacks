@@ -1,12 +1,14 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use drg_attacks::attacks::{count_paths, GreedyParams};
-use drg_attacks::graph::*;
+use drg::attacks::{count_paths, update_radius_set, GreedyParams};
+use drg::graph::*;
+use rand::Rng;
 
 fn bench_update_radius(c: &mut Criterion) {
+    let seed = rand::thread_rng().gen::<[u8; 32]>();
     let size = 10000;
     let deg = 4;
     let radius = 6; // points covered ~= 3^4
-    let mut graph = graph::Graph::new(size, graph::tests::TEST_SEED, DRGAlgo::MetaBucket(deg));
+    let mut graph = Graph::new(size, seed, DRGAlgo::MetaBucket(deg));
     graph.children_project();
     let node = size / 2;
     let mut inradius = NodeSet::default();
@@ -25,13 +27,10 @@ fn bench_update_radius(c: &mut Criterion) {
 }
 
 fn bench_count_paths(c: &mut Criterion) {
+    let seed = rand::thread_rng().gen::<[u8; 32]>();
     let size = (2 as u32).pow(16) as usize;
     let degree = 4;
-    let graph = graph::Graph::new(
-        size,
-        graph::tests::TEST_SEED,
-        graph::DRGAlgo::MetaBucket(degree),
-    );
+    let graph = Graph::new(size, seed, DRGAlgo::MetaBucket(degree));
     let length = 10;
     let k = 400;
     let s = ExclusionSet::new(&graph);

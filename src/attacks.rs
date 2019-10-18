@@ -447,16 +447,17 @@ fn add_direct_nodes(g: &Graph, v: usize, rad: &NodeSet, mut f: impl FnMut(usize)
     //closests
 }
 
-// update_radius_set fills the given inradius set with nodes that inside a radius
-// of the given node. Size of the radius is given radius. It corresponds to the
-// under-specified function "UpdateNodesInRadius" in algo. 6 of
-// https://eprint.iacr.org/2018/944.pdf
-//// NOTE: The `radius` shouldn't change across calls for the same `inradius` set,
-// that is, if we already have a node in `inradius` then we won't look for it
-// again because we assume we already found all its closest nodes within a
-// specified `radius` (if the `radius` increased across calls we would be missing
-// nodes that were farther away in comparison to earlier calls).
-fn update_radius_set(g: &Graph, node: usize, inradius: &mut NodeSet, p: &GreedyParams) {
+/// update_radius_set fills the given inradius set with nodes that inside a radius
+/// of the given node. Size of the radius is given radius. It corresponds to the
+/// under-specified function "UpdateNodesInRadius" in algo. 6 of
+/// https://eprint.iacr.org/2018/944.pdf
+/// Function only exposed for benchmarking
+/// NOTE: The `radius` shouldn't change across calls for the same `inradius` set,
+/// that is, if we already have a node in `inradius` then we won't look for it
+/// again because we assume we already found all its closest nodes within a
+/// specified `radius` (if the `radius` increased across calls we would be missing
+/// nodes that were farther away in comparison to earlier calls).
+pub fn update_radius_set(g: &Graph, node: usize, inradius: &mut NodeSet, p: &GreedyParams) {
     let radius = p.radius;
     let mut closests: Vec<Node> = Vec::with_capacity(radius * 10);
     // FIXME: We should be able to better estimate the size of this scratch
@@ -474,7 +475,9 @@ fn update_radius_set(g: &Graph, node: usize, inradius: &mut NodeSet, p: &GreedyP
                 .fold(
                     || Vec::new(),
                     |mut acc, idx| {
-                        add_direct_nodes(g, *idx, inradius, |x| {acc.push(x);});
+                        add_direct_nodes(g, *idx, inradius, |x| {
+                            acc.push(x);
+                        });
                         acc
                     },
                 )
@@ -492,7 +495,9 @@ fn update_radius_set(g: &Graph, node: usize, inradius: &mut NodeSet, p: &GreedyP
             closests.clear();
             // grab all direct nodes of those already in radius "i"
             for &v in tosearch.iter() {
-                add_direct_nodes(g, v, inradius, |x| { closests.push(x);});
+                add_direct_nodes(g, v, inradius, |x| {
+                    closests.push(x);
+                });
             }
             closests
         };
@@ -938,7 +943,7 @@ mod test {
         assert_eq!(inradius, HashSet::from_iter(vec![0, 1, 2, 3, 4, 5]));
     }
 
-        #[test]
+    #[test]
     fn test_count_paths() {
         let graph = graph::tests::graph_from(GREEDY_PARENTS.to_vec());
         // test with empty set to remove

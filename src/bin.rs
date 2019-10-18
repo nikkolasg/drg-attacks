@@ -1,15 +1,9 @@
 #![deny(warnings)]
-mod attacks;
-pub mod graph;
-mod utils;
-use attacks::{attack, attack_with_profile, AttackProfile, DepthReduceSet, GreedyParams};
-use graph::{DRGAlgo, Graph, GraphSpec};
+//mod attacks;
+//pub mod graph;
+use drg::attacks::{attack, attack_with_profile, AttackProfile, DepthReduceSet, GreedyParams};
+use drg::graph::{DRGAlgo, Graph, GraphSpec};
 use rand::Rng;
-
-#[macro_use]
-#[cfg(test)]
-extern crate lazy_static;
-extern crate rayon;
 
 use clap::{value_t, App, Arg, SubCommand};
 #[cfg(feature = "cpu-profile")]
@@ -185,7 +179,7 @@ fn baseline_valiant() {
     profile.range.interval = 0.05;
 
     let res2 = attack_with_profile(spec, &profile);
-    let json = serde_json::to_string_pretty(&vec![res1,res2]).expect("can't serialize to json");
+    let json = serde_json::to_string_pretty(&vec![res1, res2]).expect("can't serialize to json");
     println!("{}", json);
 }
 
@@ -203,7 +197,6 @@ fn theoretical_limit() {
         algo: DRGAlgo::MetaBucket(deg),
     };
 
-
     let greed_params = GreedyParams {
         k: GreedyParams::k_ratio(n as usize),
         radius: 4,
@@ -213,7 +206,7 @@ fn theoretical_limit() {
         use_degree: true,
         parallel: true,
     };
-     
+
     let mut profile = AttackProfile::from_attack(
         DepthReduceSet::GreedySize((ts * size as f64) as usize, greed_params.clone()),
         size,
@@ -224,7 +217,10 @@ fn theoretical_limit() {
     profile.range.interval = 0.1;
 
     let res0 = attack_with_profile(spec, &profile);
-    println!("json: {}",serde_json::to_string_pretty(&res0).expect("can't serialize to json"));
+    println!(
+        "json: {}",
+        serde_json::to_string_pretty(&res0).expect("can't serialize to json")
+    );
 
     let mut profile = AttackProfile::from_attack(
         DepthReduceSet::GreedyDepth((td * size as f64) as usize, greed_params.clone()),
@@ -235,11 +231,11 @@ fn theoretical_limit() {
     profile.range.end = 0.04;
     profile.range.interval = 0.01;
 
-    let res1 = attack_with_profile( spec, &profile);
-    println!("json: {}",serde_json::to_string_pretty(&vec![res0,res1]).expect("can't serialize to json"));
-
-
-
+    let res1 = attack_with_profile(spec, &profile);
+    println!(
+        "json: {}",
+        serde_json::to_string_pretty(&vec![res0, res1]).expect("can't serialize to json")
+    );
 }
 
 fn baseline_greedy() {
@@ -264,7 +260,7 @@ fn baseline_greedy() {
         use_degree: true,
         parallel: true,
     };
-     
+
     let mut profile = AttackProfile::from_attack(
         DepthReduceSet::GreedyDepth(target_depth, greed_params.clone()),
         size,
@@ -273,7 +269,6 @@ fn baseline_greedy() {
     profile.range.start = 0.15;
     profile.range.end = 0.26;
     profile.range.interval = 0.05;
-
 
     let res1 = attack_with_profile(spec, &profile);
 
@@ -287,7 +282,7 @@ fn baseline_greedy() {
     profile.range.interval = 0.05;
     let res2 = attack_with_profile(spec, &profile);
 
-    let json = serde_json::to_string_pretty(&vec![res1,res2]).expect("can't serialize to json");
+    let json = serde_json::to_string_pretty(&vec![res1, res2]).expect("can't serialize to json");
     println!("{}", json);
 }
 
