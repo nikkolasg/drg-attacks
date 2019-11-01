@@ -271,7 +271,7 @@ fn main() {
                 .takes_value(true),
         )
         .subcommand(SubCommand::with_name("greedy").about("Greedy attack"))
-        .subcommand(SubCommand::with_name("bounty"))
+        .subcommand(SubCommand::with_name("challenge_graphs"))
         .subcommand(SubCommand::with_name("porep"))
         .subcommand(SubCommand::with_name("baseline"))
         .subcommand(SubCommand::with_name("baseline_large"))
@@ -285,7 +285,7 @@ fn main() {
     if let Some(_) = matches.subcommand_matches("greedy") {
         greedy_attacks(n);
     } else if let Some(_) = matches.subcommand_matches("bounty") {
-        bounty();
+        challenge_graphs();
     } else if let Some(_) = matches.subcommand_matches("porep") {
         porep_comparison();
     } else if let Some(_) = matches.subcommand_matches("baseline_large") {
