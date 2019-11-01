@@ -28,6 +28,11 @@ pub fn node_bitsize() -> usize {
     std::mem::size_of::<usize>() * 8
 }
 
+pub fn to_hex_string(bytes: &[u8]) -> String {
+    let strs: Vec<String> = bytes.iter().map(|b| format!("{:02x}", b)).collect();
+    strs.join("")
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
