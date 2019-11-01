@@ -336,7 +336,7 @@ fn baseline_large() {
     };
 
     let mut profile = AttackProfile::from_attack(
-        DepthReduceSet::GreedyDepth(target_size, greed_params.clone()),
+        DepthReduceSet::GreedySize(target_size, greed_params.clone()),
         size,
     );
     profile.runs = 3;

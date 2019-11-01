@@ -4,3 +4,4 @@
 # Generated graph for Greedy attack tests.
 greedy.json
 *json
+!results/*json
