@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::graph::{EdgeSet, ExclusionSet, Graph, GraphSpec, Node, NodeSet};
 use crate::utils;
+use rayon::prelude::*;
 
 // FIXME: This name is no longer representative, we no longer attack using
 //  depth as a target, we also have a size target now. This should be renamed
@@ -161,16 +162,24 @@ impl AveragedAttackResult {
 /// Struct containing all informations about the attack runs. It can be
 /// serialized into JSON or other format with serde.
 #[derive(Serialize, Deserialize)]
+pub struct Results {
+    attacks: Vec<AttackResults>,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct AttackResults {
-    results: Vec<AveragedAttackResult>,
+    spec: GraphSpec,
+    // number of runs to average out the results
+    runs: usize,
     attack: DepthReduceSet,
+    results: Vec<AveragedAttackResult>,
 }
 
 impl std::fmt::Display for SingleAttackResult {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "\t-> |S| = {:.4}\n\t-> depth(G-S) = {:.4}",
+            "\t-> |S| = {:.6}\n\t-> depth(G-S) = {:.6}",
             self.exclusion_size, self.depth,
         )
     }
@@ -235,6 +244,8 @@ pub fn attack_with_profile(spec: GraphSpec, profile: &AttackProfile) -> AttackRe
     }
 
     AttackResults {
+        spec: spec,
+        runs: profile.runs,
         attack: profile.attack.clone(),
         results: targets
             .iter()
@@ -256,6 +267,8 @@ pub struct GreedyParams {
     // maximum lenth of the path - heuristic for the table produced by count_paths
     // see paragraph below equation 8.
     pub length: usize,
+    // use parallelism for certain parts of the attacks
+    pub parallel: bool,
     // test field to look at the impact of reseting the inradius set between
     // iterations or not.
     // FIXME: it can sometimes create an infinite loop
@@ -265,7 +278,6 @@ pub struct GreedyParams {
     // test field: when set, the topk nodes are selected one by one, updating the
     // radius set for each selected node.
     pub iter_topk: bool,
-
     // when set to true, greedy counts the degree of a node as
     // an indicator of its number of incident path
     pub use_degree: bool,
@@ -366,7 +378,7 @@ fn append_removal(
             continue;
         }
         set.insert(node.0);
-        update_radius_set(g, node.0, inradius, radius);
+        update_radius_set(g, node.0, inradius, params);
         count += 1;
         debug!(
             "\t-> iteration {} : node {} inserted -> inradius {:?}",
@@ -386,7 +398,9 @@ fn append_removal(
     if count == 0 {
         debug!("\t-> added by default one node {}", incidents[0].0);
         set.insert(incidents[0].0);
-        update_radius_set(g, incidents[0].0, inradius, radius);
+        if !params.reset {
+            update_radius_set(g, incidents[0].0, inradius, params);
+        }
         count += 1;
     }
 
@@ -401,59 +415,92 @@ fn append_removal(
     );
 }
 
-// update_radius_set fills the given inradius set with nodes that inside a radius
-// of the given node. Size of the radius is given radius. It corresponds to the
-// under-specified function "UpdateNodesInRadius" in algo. 6 of
-// https://eprint.iacr.org/2018/944.pdf
-// NOTE: The `radius` shouldn't change across calls for the same `inradius` set,
-// that is, if we already have a node in `inradius` then we won't look for it
-// again because we assume we already found all its closest nodes within a
-// specified `radius` (if the `radius` increased across calls we would be missing
-// nodes that were farther away in comparison to earlier calls).
-fn update_radius_set(g: &Graph, node: usize, inradius: &mut NodeSet, radius: usize) {
+fn add_direct_nodes(g: &Graph, v: usize, rad: &NodeSet, mut f: impl FnMut(usize)) {
+    // add all direct parent
+    g.parents()[v]
+        .iter()
+        // no need to continue searching with that parent since it's
+        // already in the radius, i.e. it already has been searched
+        // FIXME see if it works and resolves any potential loops
+        .filter(|&parent| !rad.contains(parent))
+        .for_each(|&parent| {
+            f(parent);
+            //closests.insert(parent);
+        });
+
+    // add all direct children
+    g.children()[v]
+        .iter()
+        // no need to continue searching with that parent since it's
+        // already in the radius, i.e. it already has been searched
+        .filter(|&child| !rad.contains(child))
+        .for_each(|&child| {
+            //closests.insert(child);
+            f(child);
+        });
+    trace!(
+        "\t add_direct node {}: at most {} parents and {} children",
+        v,
+        g.parents()[v].len(),
+        g.children()[v].len()
+    );
+    //closests
+}
+
+/// update_radius_set fills the given inradius set with nodes that inside a radius
+/// of the given node. Size of the radius is given radius. It corresponds to the
+/// under-specified function "UpdateNodesInRadius" in algo. 6 of
+/// https://eprint.iacr.org/2018/944.pdf
+/// Function only exposed for benchmarking
+/// NOTE: The `radius` shouldn't change across calls for the same `inradius` set,
+/// that is, if we already have a node in `inradius` then we won't look for it
+/// again because we assume we already found all its closest nodes within a
+/// specified `radius` (if the `radius` increased across calls we would be missing
+/// nodes that were farther away in comparison to earlier calls).
+pub fn update_radius_set(g: &Graph, node: usize, inradius: &mut NodeSet, p: &GreedyParams) {
+    let radius = p.radius;
     let mut closests: Vec<Node> = Vec::with_capacity(radius * 10);
     // FIXME: We should be able to better estimate the size of this scratch
     //  vector based on the `radius` and the average degree of the nodes.
     let mut tosearch: Vec<Node> = Vec::with_capacity(closests.capacity());
-
-    let add_direct_nodes = |v: usize, closests: &mut Vec<Node>, _: &NodeSet| {
-        // add all direct parent
-        g.parents()[v]
-            .iter()
-            // no need to continue searching with that parent since it's
-            // already in the radius, i.e. it already has been searched
-            // FIXME see if it works and resolves any potential loops
-            //.filter(|&parent| !rad.contains(parent))
-            .for_each(|&parent| {
-                closests.push(parent);
-            });
-
-        // add all direct children
-        g.children()[v]
-            .iter()
-            // no need to continue searching with that parent since it's
-            // already in the radius, i.e. it already has been searched
-            //.filter(|&child| !rad.contains(child))
-            .for_each(|&child| {
-                closests.push(child);
-            });
-        trace!(
-            "\t add_direct node {}: at most {} parents and {} children",
-            v,
-            g.parents()[v].len(),
-            g.children()[v].len()
-        );
-    };
     // insert first the given node and then add the close nodes
     inradius.insert(node);
     tosearch.push(node);
     // do it recursively "radius" times
     for i in 0..radius {
-        closests.clear();
         // grab all direct nodes of those already in radius "i"
-        for &v in tosearch.iter() {
-            add_direct_nodes(v, &mut closests, inradius);
-        }
+        closests = if p.parallel {
+            tosearch
+                .par_iter()
+                .fold(
+                    || Vec::new(),
+                    |mut acc, idx| {
+                        add_direct_nodes(g, *idx, inradius, |x| {
+                            acc.push(x);
+                        });
+                        acc
+                    },
+                )
+                .reduce(
+                    || Vec::new(),
+                    |mut acc, set| {
+                        // would be nice to use following but rayon doesn't
+                        // accept to use &mut set
+                        //acc.append(&mut set);
+                        acc.extend(set);
+                        acc
+                    },
+                )
+        } else {
+            closests.clear();
+            // grab all direct nodes of those already in radius "i"
+            for &v in tosearch.iter() {
+                add_direct_nodes(g, v, inradius, |x| {
+                    closests.push(x);
+                });
+            }
+            closests
+        };
         tosearch.clear();
         for &mut node in &mut closests {
             if inradius.insert(node) {
@@ -470,7 +517,7 @@ fn update_radius_set(g: &Graph, node: usize, inradius: &mut NodeSet, radius: usi
 }
 
 #[derive(Clone, Debug, Eq)]
-struct Pair(usize, usize);
+pub struct Pair(usize, usize);
 
 impl Ord for Pair {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -489,13 +536,13 @@ impl PartialEq for Pair {
         self.0 == other.0 && self.1 == other.1
     }
 }
-// count_paths implements the CountPaths method in Algo. 5 for the greedy algorithm
-// It returns:
-// 1. the number of incident paths of the given length for each node.
-//      Index is the the index of the node, value is the paths count.
-// 2. the top k nodes indexes that have the higest incident paths
-//      The number of incident path is not given.
-fn count_paths(g: &Graph, s: &ExclusionSet, p: &GreedyParams) -> Vec<Pair> {
+/// count_paths implements the CountPaths method in Algo. 5 for the greedy algorithm
+/// It returns:
+/// 1. the number of incident paths of the given length for each node.
+///      Index is the the index of the node, value is the paths count.
+/// 2. the top k nodes indexes that have the higest incident paths
+///      The number of incident path is not given.
+pub fn count_paths(g: &Graph, s: &ExclusionSet, p: &GreedyParams) -> Vec<Pair> {
     if p.use_degree {
         return count_paths_degree(g, s);
     }
@@ -528,25 +575,54 @@ fn count_paths(g: &Graph, s: &ExclusionSet, p: &GreedyParams) -> Vec<Pair> {
         });
     }
 
-    // counting how many incident paths of length d there is for each node
-    let mut incidents = Vec::with_capacity(g.size());
     // counting the top k node wo have the greatest number of incident paths
     // NOTE: difference with the C# that recomputes that vector separately.
     // Since topk is directly correlated to incidents[], we can compute both
     // at the same time and remove one O(n) iteration.
-    g.for_each_node(|&node| {
-        if s.contains(node) {
-            return;
-        }
-        incidents.push(Pair(
+    let incident_of = |node: usize| -> Pair {
+        Pair(
             node,
             (0..=length)
                 .map(|d| (starting_paths[node][d] * ending_paths[node][length - d]) as usize)
                 .sum(),
-        ));
-    });
+        )
+    };
 
-    incidents.sort_by_key(|pair| Reverse(pair.1));
+    // FIXME: this specific part doesn't improve much
+    let mut incidents = if p.parallel {
+        (0..g.size())
+            .into_par_iter()
+            .filter(|&n| !s.contains(n))
+            .fold(
+                || Vec::new(),
+                |mut acc, n| {
+                    acc.push(incident_of(n));
+                    acc
+                },
+            )
+            .reduce(
+                || Vec::with_capacity(g.size()),
+                |mut acc, p| {
+                    acc.extend(p);
+                    acc
+                },
+            )
+    } else {
+        (0..g.size()).into_iter().filter(|&n| !s.contains(n)).fold(
+            Vec::with_capacity(g.size()),
+            |mut acc, n| {
+                acc.push(incident_of(n));
+                acc
+            },
+        )
+    };
+
+    if p.parallel {
+        // parallel sorting improves time
+        incidents.par_sort_by_key(|pair| Reverse(pair.1));
+    } else {
+        incidents.sort_by_key(|pair| Reverse(pair.1));
+    }
     incidents
 }
 
@@ -788,6 +864,7 @@ mod test {
             iter_topk: true,
             reset: true,
             use_degree: false,
+            parallel: false,
         };
         let set1 = greedy_reduce(&mut g3, DepthReduceSet::GreedyDepth(depth, params.clone()));
 
@@ -840,14 +917,29 @@ mod test {
         graph.children_project();
         let node = 2;
         let mut inradius = NodeSet::default();
+        let mut p = GreedyParams {
+            radius: 1,
+            ..GreedyParams::default()
+        };
 
-        update_radius_set(&graph, node, &mut inradius, 1);
+        update_radius_set(&graph, node, &mut inradius, &p);
         assert_eq!(inradius, HashSet::from_iter(vec![0, 1, 2, 3, 4]));
-
+        p.radius = 2;
         // Start another search with a bigger `radius`, clear previous
         // `inradius` to look for the nodes all over again.
         inradius.clear();
-        update_radius_set(&graph, node, &mut inradius, 2);
+        update_radius_set(&graph, node, &mut inradius, &p);
+        assert_eq!(inradius, HashSet::from_iter(vec![0, 1, 2, 3, 4, 5]));
+
+        // start again with parallelism
+        inradius.clear();
+        p.parallel = true;
+        p.radius = 1;
+        update_radius_set(&graph, node, &mut inradius, &p);
+        assert_eq!(inradius, HashSet::from_iter(vec![0, 1, 2, 3, 4]));
+        inradius.clear();
+        p.radius = 2;
+        update_radius_set(&graph, node, &mut inradius, &p);
         assert_eq!(inradius, HashSet::from_iter(vec![0, 1, 2, 3, 4, 5]));
     }
 

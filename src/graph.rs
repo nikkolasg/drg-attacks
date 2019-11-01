@@ -20,6 +20,7 @@ pub struct GraphSpec {
     //  of directly from the seed (otherwise repeatedly created graphs
     //  for the same attack profile will be all the same). This should
     //  be enforced here.
+    #[serde(skip)]
     pub seed: [u8; 32],
     pub algo: DRGAlgo,
 }

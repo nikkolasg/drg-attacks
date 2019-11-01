@@ -1,8 +1,15 @@
 [package]
 name = "drg-attacks"
 version = "0.1.0"
-authors = ["nalos"]
+authors = ["nikkolasg, schomatis"]
 edition = "2018"
+
+[lib]
+name = "drg"
+
+[[bin]]
+name = "drgattacks"
+path = "src/bin.rs"
 
 [dependencies]
 rand = "0.7"
@@ -12,9 +19,14 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 log = "0.4"
 pretty_env_logger = "0.3.1"
+rayon = "1.2.0"
 gperftools = "0.2"
 clap = "2.33.0"
 fnv = "1.0.6"
+
+[dev-dependencies]
+criterion = "0.3"
+
 
 [features]
 default = []
@@ -26,3 +38,9 @@ cpu-profile = []
 # take effect.
 # FIXME: We want debug symbols in release mode only when profiling,
 #  this option should be controlled by the `cpu-profile` feature.
+#
+
+[[bench]]
+name = "greedy"
+harness = false
+
