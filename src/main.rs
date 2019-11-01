@@ -4,7 +4,9 @@ pub mod graph;
 mod utils;
 use attacks::{attack, attack_with_profile, AttackProfile, DepthReduceSet, GreedyParams};
 use graph::{DRGAlgo, Graph, GraphSpec};
-use rand::Rng;
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaChaRng;
+use std::fs::File;
 
 #[macro_use]
 #[cfg(test)]
@@ -154,6 +156,31 @@ fn greedy_attacks(n: usize) {
     println!("{}", json);
 }
 
+fn challenge_graphs() {
+    let n_graphs = 5;
+    let n = 20;
+    let size = (2 as u32).pow(n);
+    let degree = 6;
+    (1..=n_graphs).for_each(|i| {
+        let seed = rand::thread_rng().gen::<[u8; 32]>();
+        let mut rng = ChaChaRng::from_seed(seed);
+        let spec = GraphSpec {
+            size: size as usize,
+            seed: seed,
+            algo: DRGAlgo::MetaBucket(degree),
+        };
+        println!(
+            "Constructing graph with seed {}",
+            utils::to_hex_string(&seed)
+        );
+        let g = Graph::new_from_rng(spec, &mut rng);
+        let name = format!("graph-{}.json", i);
+        let file = File::create(&name).unwrap();
+        serde_json::to_writer(file, &g).unwrap();
+        println!("\t-> saved to {}", name);
+    });
+}
+
 fn baseline() {
     println!("Baseline computation for target size [0.10,0.20,0.30]");
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
@@ -192,6 +219,44 @@ fn baseline() {
     println!("{}", json);
 }
 
+fn baseline_large() {
+    println!("Baseline computation for target size [0.90]");
+    let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
+    let n = 20;
+    let size = (2 as usize).pow(n);
+    let deg = 6;
+    let target_size = (0.30 * size as f64) as usize;
+    let spec = GraphSpec {
+        size,
+        seed: random_bytes,
+        algo: DRGAlgo::MetaBucket(deg),
+    };
+
+    let greed_params = GreedyParams {
+        k: GreedyParams::k_ratio(n as usize),
+        radius: 4,
+        reset: true,
+        length: 10,
+        iter_topk: true,
+        use_degree: false,
+    };
+
+    let mut profile = AttackProfile::from_attack(
+        DepthReduceSet::GreedyDepth(target_size, greed_params.clone()),
+        size,
+    );
+    profile.runs = 3;
+    profile.range.start = 0.90;
+    profile.range.end = 0.91;
+    profile.range.interval = 0.10;
+
+    let res = attack_with_profile(spec, &profile);
+    println!("\n\n------------------");
+    println!("Attack finished: {:?}", profile);
+    let json = serde_json::to_string_pretty(&res).expect("can't serialize to json");
+    println!("{}", json);
+}
+
 fn main() {
     pretty_env_logger::init_timed();
 
@@ -206,8 +271,10 @@ fn main() {
                 .takes_value(true),
         )
         .subcommand(SubCommand::with_name("greedy").about("Greedy attack"))
+        .subcommand(SubCommand::with_name("challenge_graphs"))
         .subcommand(SubCommand::with_name("porep"))
         .subcommand(SubCommand::with_name("baseline"))
+        .subcommand(SubCommand::with_name("baseline_large"))
         .get_matches();
 
     let n = value_t!(matches, "size", usize).unwrap();
@@ -217,8 +284,12 @@ fn main() {
 
     if let Some(_) = matches.subcommand_matches("greedy") {
         greedy_attacks(n);
+    } else if let Some(_) = matches.subcommand_matches("bounty") {
+        challenge_graphs();
     } else if let Some(_) = matches.subcommand_matches("porep") {
         porep_comparison();
+    } else if let Some(_) = matches.subcommand_matches("baseline_large") {
+        baseline_large();
     } else if let Some(_) = matches.subcommand_matches("baseline") {
         baseline();
     } else {

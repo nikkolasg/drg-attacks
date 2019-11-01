@@ -294,3 +294,50 @@ points.  One point used to characterize the depth robustness of the graph is
         ));
     });
 ```
+
+{
+    "spec": {
+      "size": 1048576,
+      "algo": {
+        "MetaBucket": 6
+      }
+    },
+    "runs": 3,
+    "attack": {
+      "GreedySize": [
+        1048,
+        {
+          "k": 800,
+          "radius": 4,
+          "length": 10,
+          "parallel": true,
+          "reset": true,
+          "iter_topk": true,
+          "use_degree": true
+        }
+      ]
+    },
+    "results": [
+      {
+        "target": 0.15,
+        "mean_depth": 0.4692646662394206,
+        "mean_size": 0.150299072265625
+      },
+      {
+        "target": 0.2,
+        "mean_depth": 0.33088525136311847,
+        "mean_size": 0.200653076171875
+      },
+      {
+        "target": 0.25,
+        "mean_depth": 0.21710904439290366,
+        "mean_size": 0.250244140625
+      },
+      {
+        "target": 0.3,
+        "mean_depth": 0.12705866495768228,
+        "mean_size": 0.30059814453125
+      }
+    ]
+  }
+
