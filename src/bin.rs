@@ -176,11 +176,10 @@ fn challenge_graphs() {
     });
 }
 
-fn baseline_valiant() {
+fn baseline_valiant(n: usize) {
     println!("Baseline computation for target size [0.10,0.20,0.30]");
     let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
-    let n = 20;
-    let size = (2 as usize).pow(n);
+    let size = (2 as usize).pow(n as u32);
     let deg = 6;
     let target_size = (0.30 * size as f64) as usize;
     let spec = GraphSpec {
@@ -386,7 +385,7 @@ fn main() {
     } else if let Some(_) = matches.subcommand_matches("baseline_greedy") {
         baseline_greedy();
     } else if let Some(_) = matches.subcommand_matches("baseline_valiant") {
-        baseline_valiant();
+        baseline_valiant(n);
     } else if let Some(_) = matches.subcommand_matches("baseline_large") {
         baseline_large();
     } else if let Some(_) = matches.subcommand_matches("theoretical_limit") {
