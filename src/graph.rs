@@ -59,7 +59,9 @@ impl Edge {
     pub fn new(parent: Node, child: Node) -> Edge {
         debug_assert!(
             parent < child,
-            format!("the parent {} is not smaller than child {}", parent, child)
+            "the parent {} is not smaller than child {}",
+            parent,
+            child
         );
         Edge { parent, child }
     }
@@ -495,17 +497,15 @@ impl Graph {
         // let parents = vec![vec![]; self.size()];
         // FIXME: How to set the capacity for the inner empty vector to `k`?
 
-        debug_assert!(k > 0, format!("k {} is too small", k));
+        debug_assert!(k > 0, "k {} is too small", k);
 
         // Check that the graph is big enough to accommodate k connections
         // at least in the center
         debug_assert!(
             self.size() - 2 * k > 0,
-            format!(
-                "the graph of size {} is too small for a k {}",
-                self.size(),
-                k
-            )
+            "the graph of size {} is too small for a k {}",
+            self.size(),
+            k
         );
 
         for node in 0..self.size() {
