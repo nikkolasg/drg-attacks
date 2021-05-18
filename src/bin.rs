@@ -69,13 +69,26 @@ fn drg_command(m: &ArgMatches) {
     let runs = 1;
     let attack_type = sub.value_of("attack").unwrap();
     let greedy_params = GreedyParams::standard(pow);
-    
+    let parse_bounds = |default:&str| -> (f64,f64) {
+        let default_v = value_t_or_exit!(sub, default, f64);
+        let to = if sub.is_present("to") {
+            value_t_or_exit!(sub,"to",f64)
+        } else {
+            value_t_or_exit!(sub, default, f64)
+        };
+        let interval = if sub.is_present("increment") {
+            value_t_or_exit!(sub,"increment",f64)
+        } else {
+            (to - default_v) / 3.0
+        };
+        (to,interval)
+    };
     let (attack, range) = if is_alpha {
         // alpha is the proportion of nodes we want to keep according to the DRG
         // definition and in this set of alpha*n nodes, we try to find the
         // longest path.
         let alpha = value_t_or_exit!(sub, "alpha", f64);
-        let max_alpha = value_t_or_exit!(sub, "to", f64);
+        let (max_alpha,interval) = parse_bounds("alpha");
         let exclusion_set = 1.0 - alpha;
         let set_size = (exclusion_set * n as f64) as usize;
         let max_exclusion_set = 1.0 - max_alpha;
@@ -85,7 +98,7 @@ fn drg_command(m: &ArgMatches) {
             // TODO really fix this ambivalent way in the code
             end: exclusion_set,
             start: max_exclusion_set,
-            interval: value_t_or_exit!(sub, "increment", f64),
+            interval: interval,
         };
         // however, the attack works by finding a set S of size 1-alpha such that
         // when *removed* from the main graph, then the main graph has a longest
@@ -97,11 +110,12 @@ fn drg_command(m: &ArgMatches) {
         }
     } else {
         let beta = value_t_or_exit!(sub, "beta", f64);
+        let (end,interval) = parse_bounds("beta");
         let beta_size = (beta * n as f64) as usize;
         let range = TargetRange {
             start: beta,
-            interval: value_t_or_exit!(sub, "increment", f64),
-            end: value_t_or_exit!(sub, "to", f64),
+            end: end,
+            interval: interval,
         };
         match attack_type {
             VALIANT_TYPE => (AttackAlgo::ValiantDepth(beta_size), range),
@@ -489,7 +503,6 @@ fn main() {
                 .takes_value(true)
             ).arg(Arg::with_name("to")
                 .long("to")
-                .required(true)
                 .help("value of alpha/beta where to stop the attacks")
                 .takes_value(true)
             ).arg(Arg::with_name("increment")
