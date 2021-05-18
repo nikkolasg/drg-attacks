@@ -25,6 +25,20 @@ pub struct GraphSpec {
     pub algo: DRGAlgo,
 }
 
+impl fmt::Display for GraphSpec {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "GraphSpec(size: 2^{}, type: ",
+            (self.size as f64).log2() as usize
+        )?;
+        match self.algo {
+            DRGAlgo::BucketSample => write!(f, "bucket)"),
+            DRGAlgo::MetaBucket(d) => write!(f, "meta-bucket (degree {})),", d),
+            DRGAlgo::KConnector(k) => write!(f, "{}-connect)", k),
+        }
+    }
+}
 // Graph holds the parameters and the edges of the graph. This is a special type
 // of graph that has a *proper* labelling: for each edge (i,j), we have i < j.
 #[derive(Debug, Serialize, Deserialize)]

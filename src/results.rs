@@ -71,7 +71,7 @@ impl std::fmt::Display for SingleAttackResult {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "\t-> |S| = {:.6}\n\t-> depth(G-S) = {:.6}",
+            "\t-> |S| = {:.2}\n\t-> depth(G-S) = {:.2}",
             self.exclusion_size, self.depth,
         )
     }

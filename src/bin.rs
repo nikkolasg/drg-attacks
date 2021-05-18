@@ -131,7 +131,6 @@ fn drg_command(m: &ArgMatches) {
 
     println!("Running attacks on graph size {:?}", specs.size);
     let results = attack_with_profile(specs, &profile);
-    println!("results {:?}", results);
     let handler : Box<dyn Write> = if sub.is_present("csv") {
         let fname = sub.value_of("csv").unwrap_or("results.csv");
         Box::new(File::create(fname).expect("opening output file failed"))

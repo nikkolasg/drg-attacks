@@ -143,7 +143,11 @@ pub fn attack_with_profile(spec: GraphSpec, profile: &AttackProfile) -> AttackRe
     // graph once we attacked it with all targets.
     let mut rng = ChaCha20Rng::from_seed(spec.seed);
     for run in 0..profile.runs {
-        println!("Attack {}:\n\t-> Graph generation...", run);
+        println!(
+            "Attack {}:\n\t-> Graph generation with spec {}",
+            run,
+            spec.clone()
+        );
         let mut g = Graph::new_from_rng(spec, &mut rng);
 
         for (t, target) in targets.iter().enumerate() {
