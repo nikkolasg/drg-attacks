@@ -1,7 +1,9 @@
 use fnv::FnvHasher;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::cmp::max;
 use std::collections::{HashMap, HashSet};
 use std::error;
@@ -258,7 +260,6 @@ impl Graph {
     }
 
     /// Number of nodes in the graph.
-    // FIXME: Standardize size usage, don't access length or capacity of inner structures.
     pub fn size(&self) -> usize {
         self.spec.size
     }
@@ -422,30 +423,47 @@ impl Graph {
     // Implementation of the meta-graph construction algorithm described in page 22
     // of the porep paper https://web.stanford.edu/~bfisch/porep_short.pdf
     // It produces a degree-d graph on average.
-    fn meta_bucket(&mut self, degree: usize, rng: &mut ChaChaRng) {
+    fn meta_bucket(&mut self, degree: usize, _: &mut ChaChaRng) {
         let m = degree - 1;
-        for node in 0..self.parents.capacity() {
-            let mut parents = Vec::with_capacity(degree);
-            match node {
-                // no parents for the first node
-                0 => {}
-                // second node only has the first node as parent
-                1 => {
-                    parents.push(0);
-                }
-                _ => {
-                    // push the direct parent of i, i.e. (i-1 -> i)
-                    parents.push(node - 1);
+        self.parents = (0..self.parents.capacity())
+            .into_par_iter()
+            .map(|node| {
+                let mut parents = match node {
+                    // no parents for the first node
+                    0 => vec![],
+                    // second node only has the first node as parent
+                    1 => {
+                        vec![0]
+                    }
+                    _ => {
+                        (0..degree)
+                            .into_par_iter()
+                            .map(|parent_idx| {
+                                if parent_idx == 0 {
+                                    // push the direct parent of i, i.e. (i-1 -> i)
+                                    return node - 1;
+                                }
+                                let mut d = Sha256::new();
+                                d.update(&self.spec.seed);
+                                d.update(&node.to_be_bytes()[..]);
+                                d.update(&parent_idx.to_be_bytes()[..]);
+                                let digest = d.finalize();
+                                let mut local_seed: [u8; 32] = [0; 32];
+                                local_seed.copy_from_slice(&digest[..]);
+                                let mut local_rng = ChaChaRng::from_seed(local_seed);
 
-                    // similar to bucket_sample but we select m parents instead
-                    // of just one
-                    parents.extend((0..m).map(|_| Self::sample_parent_node(node, m, rng).0));
-                }
-            }
-            // filtering duplicate parents
-            remove_duplicate(&mut parents);
-            self.parents.push(parents);
-        }
+                                // similar to bucket_sample but we select m parents instead
+                                // of just one
+                                Self::sample_parent_node(node, m, &mut local_rng).0
+                            })
+                            .collect::<Vec<_>>()
+                    }
+                };
+                // filtering duplicate parents
+                remove_duplicate(&mut parents);
+                parents
+            })
+            .collect::<Vec<_>>();
     }
 
     /// Core of the meta-graph construction (`meta_bucket`) isolated for audit and
