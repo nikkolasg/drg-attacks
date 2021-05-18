@@ -2,7 +2,6 @@ use crate::attacks::AttackAlgo;
 use crate::graph::{DRGAlgo, GraphSpec};
 use csv;
 use serde::{Deserialize, Serialize};
-use std::error::Error;
 use std::io::Write;
 
 /// Results of an attack expressed in relation to the graph size.
@@ -95,8 +94,8 @@ impl AttackResults {
         let n = self.spec.size as f64;
         let logn = n.log2() as u32;
         let (attack_type, target_type) = match self.attack {
-            AttackAlgo::ValiantSize(s) => ("valiant", "alpha"),
-            AttackAlgo::ValiantDepth(d) => ("valiant", "beta"),
+            AttackAlgo::ValiantSize(_) => ("valiant", "alpha"),
+            AttackAlgo::ValiantDepth(_) => ("valiant", "beta"),
             _ => panic!("unknown type of attack to serialize into csv"),
         };
         let (graph_type, degree) = match self.spec.algo {
