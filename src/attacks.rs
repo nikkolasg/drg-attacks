@@ -340,47 +340,22 @@ fn append_removal(
         count += 1;
     }
 
-    let d = g.depth_exclude(&set);
     debug!(
-        "\t-> added {}/{} nodes in |S| = {:.2}, depth(G-S) = {:.2} = {:.3}n",
+        "\t-> added {}/{} nodes in |S| = {:.2}, depth(G-S) =  {:.3}n",
         count,
         k,
         set.size(),
-        d,
-        (d as f32) / (g.cap() as f32),
+        (g.depth_exclude(&set) as f32) / (g.cap() as f32),
     );
 }
 
-fn add_direct_nodes(g: &Graph, v: usize, rad: &NodeSet, mut f: impl FnMut(usize)) {
-    // add all direct parent
-    g.parents()[v]
-        .iter()
-        // no need to continue searching with that parent since it's
-        // already in the radius, i.e. it already has been searched
-        // FIXME see if it works and resolves any potential loops
-        .filter(|&parent| !rad.contains(parent))
-        .for_each(|&parent| {
-            f(parent);
-            //closests.insert(parent);
-        });
-
-    // add all direct children
-    g.children()[v]
-        .iter()
-        // no need to continue searching with that parent since it's
-        // already in the radius, i.e. it already has been searched
-        .filter(|&child| !rad.contains(child))
-        .for_each(|&child| {
-            //closests.insert(child);
-            f(child);
-        });
-    trace!(
-        "\t add_direct node {}: at most {} parents and {} children",
-        v,
-        g.parents()[v].len(),
-        g.children()[v].len()
-    );
-    //closests
+fn compute_direct_nodes(g: &Graph, v: usize, rad: &NodeSet) -> Vec<usize> {
+    return g.parents()[v]
+        .par_iter()
+        .chain(g.children()[v].par_iter())
+        .filter(|&node| !rad.contains(node))
+        .cloned()
+        .collect::<Vec<usize>>();
 }
 
 /// update_radius_set fills the given inradius set with nodes that inside a radius
@@ -411,9 +386,9 @@ pub fn update_radius_set(g: &Graph, node: usize, inradius: &mut NodeSet, p: &Gre
                 .fold(
                     || Vec::new(),
                     |mut acc, idx| {
-                        add_direct_nodes(g, *idx, inradius, |x| {
-                            acc.push(x);
-                        });
+                        compute_direct_nodes(g, *idx, inradius)
+                            .into_iter()
+                            .for_each(|x| acc.push(x));
                         acc
                     },
                 )
@@ -431,9 +406,9 @@ pub fn update_radius_set(g: &Graph, node: usize, inradius: &mut NodeSet, p: &Gre
             closests.clear();
             // grab all direct nodes of those already in radius "i"
             for &v in tosearch.iter() {
-                add_direct_nodes(g, v, inradius, |x| {
-                    closests.push(x);
-                });
+                compute_direct_nodes(g, v, inradius)
+                    .into_iter()
+                    .for_each(|x| closests.push(x));
             }
             closests
         };
