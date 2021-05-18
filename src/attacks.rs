@@ -143,6 +143,7 @@ pub fn attack_with_profile(spec: GraphSpec, profile: &AttackProfile) -> AttackRe
     // graph once we attacked it with all targets.
     let mut rng = ChaCha20Rng::from_seed(spec.seed);
     for run in 0..profile.runs {
+        println!("Attack {}:\n\t-> Graph generation...", run);
         let mut g = Graph::new_from_rng(spec, &mut rng);
 
         for (t, target) in targets.iter().enumerate() {
@@ -154,10 +155,7 @@ pub fn attack_with_profile(spec: GraphSpec, profile: &AttackProfile) -> AttackRe
                 AttackAlgo::GreedyDepth(_, p) => AttackAlgo::GreedyDepth(absolute_target, p),
                 AttackAlgo::GreedySize(_, p) => AttackAlgo::GreedySize(absolute_target, p),
             };
-            println!(
-                "Attack (run {}) target: {:.2}, with {}",
-                run, target, attack_type
-            );
+            println!("\t-> Run target attack {:.2}, with {}", attack_type, target);
             results[t][run] = attack(&mut g, attack_type.clone());
         }
     }
