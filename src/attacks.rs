@@ -216,10 +216,11 @@ impl GreedyParams {
     pub fn standard(size: usize) -> Self {
         GreedyParams {
             k: Self::k_ratio(size),
-            radius: 5,
+            radius: 8,
             length: 16,
-            reset: true,
+            reset: false,
             iter_topk: true,
+            parallel: true,
             ..GreedyParams::default()
         }
     }
@@ -487,13 +488,18 @@ pub fn count_paths(g: &Graph, s: &ExclusionSet, p: &GreedyParams) -> Vec<Pair> {
     let mut starting_paths = vec![vec![0 as u64; length + 1]; g.cap()];
     // counting phase of all starting/ending paths of all length
 
-    for node in 0..g.size() {
-        if !s.contains(node) {
-            // initializes the tables with 1 for nodes present in G - S
-            ending_paths[node][0] = 1;
-            starting_paths[node][0] = 1;
-        }
-    }
+    let (mut ending_paths, mut starting_paths): (Vec<Vec<u64>>, Vec<Vec<u64>>) = (0..g.size())
+        .into_par_iter()
+        .map(|node| {
+            let mut ending_paths = vec![0 as u64; length + 1];
+            let mut starting_paths = vec![0 as u64; length + 1];
+            if !s.contains(node) {
+                ending_paths[0] = 1;
+                starting_paths[0] = 1;
+            }
+            (ending_paths, starting_paths)
+        })
+        .unzip();
 
     for d in 1..=length {
         g.for_each_edge(|e| {
@@ -518,6 +524,7 @@ pub fn count_paths(g: &Graph, s: &ExclusionSet, p: &GreedyParams) -> Vec<Pair> {
         Pair(
             node,
             (0..=length)
+                .into_par_iter()
                 .map(|d| (starting_paths[node][d] * ending_paths[node][length - d]) as usize)
                 .sum(),
         )
