@@ -98,6 +98,8 @@ impl AttackResults {
             AttackAlgo::ValiantSize(_) => ("valiant", "alpha"),
             // beta stays the same
             AttackAlgo::ValiantDepth(_) => ("valiant", "beta"),
+            AttackAlgo::GreedySize(_, _) => ("greedy", "alpha"),
+            AttackAlgo::GreedyDepth(_, _) => ("greedy", "beta"),
             _ => panic!("unknown type of attack to serialize into csv"),
         };
         let (graph_type, degree) = match self.spec.algo {
