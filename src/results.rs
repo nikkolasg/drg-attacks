@@ -94,7 +94,9 @@ impl AttackResults {
         let n = self.spec.size as f64;
         let logn = n.log2() as u32;
         let (attack_type, target_type) = match self.attack {
+            // transform alpha definition from block depth robust to DRG
             AttackAlgo::ValiantSize(_) => ("valiant", "alpha"),
+            // beta stays the same
             AttackAlgo::ValiantDepth(_) => ("valiant", "beta"),
             _ => panic!("unknown type of attack to serialize into csv"),
         };
@@ -105,8 +107,12 @@ impl AttackResults {
         };
         let truncate = |before: f64| (before * 100.0).floor() / 100.0;
         self.results.iter().try_for_each(|r| {
-            let alpha = 1.0 - r.mean_size; // mean size is the size of the set we remove
-            let target = 1.0 - r.target;
+            // mean size is the size of the set we remove
+            let alpha = 1.0 - r.mean_size;
+            let target = match target_type {
+                "alpha" => 1.0 - r.target,
+                _ => r.target,
+            };
             wtr.serialize(Record {
                 graph_size: logn,
                 graph_type: graph_type.to_string(),
