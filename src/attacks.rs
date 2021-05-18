@@ -459,10 +459,7 @@ pub fn count_paths(g: &Graph, s: &ExclusionSet, p: &GreedyParams) -> Vec<Pair> {
     }
     let length = p.length;
     // dimensions are [n][depth]
-    let mut ending_paths = vec![vec![0 as u64; length + 1]; g.cap()];
-    let mut starting_paths = vec![vec![0 as u64; length + 1]; g.cap()];
     // counting phase of all starting/ending paths of all length
-
     let (mut ending_paths, mut starting_paths): (Vec<Vec<u64>>, Vec<Vec<u64>>) = (0..g.size())
         .into_par_iter()
         .map(|node| {
