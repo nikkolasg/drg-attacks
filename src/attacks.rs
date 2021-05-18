@@ -203,9 +203,23 @@ pub struct GreedyParams {
 }
 
 impl GreedyParams {
-    pub fn k_ratio(size: usize) -> usize {
-        assert!(size >= 20);
-        (2 as usize).pow((size as u32 - 18) / 2) * 400
+    // TODO find better formulas/rational
+    pub fn k_ratio(log2n: usize) -> usize {
+        if log2n >= 20 {
+            (2 as usize).pow((log2n as u32 - 18) / 2) * 400
+        } else {
+            (1 << log2n) / 10
+        }
+    }
+    pub fn standard(size: usize) -> Self {
+        GreedyParams {
+            k: Self::k_ratio(size),
+            radius: 5,
+            length: 16,
+            reset: true,
+            iter_topk: true,
+            ..GreedyParams::default()
+        }
     }
 }
 

@@ -13,6 +13,9 @@ use clap::{value_t_or_exit, App, Arg, ArgMatches, SubCommand};
 #[cfg(feature = "cpu-profile")]
 use gperftools::profiler::PROFILER;
 
+const VALIANT_TYPE :&str = "valiant";
+const GREEDY_TYPE :&str= "greedy";
+
 /// Start profile (currently use for the Greedy attack) and dump the file in
 /// the current directory. It can later be analyzed with `pprof`, e.g.,
 /// ```text
@@ -64,6 +67,9 @@ fn drg_command(m: &ArgMatches) {
         algo: algo,
     };
     let runs = 1;
+    let attack_type = sub.value_of("attack").unwrap();
+    let greedy_params = GreedyParams::standard(pow);
+    
     let (attack, range) = if is_alpha {
         // alpha is the proportion of nodes we want to keep according to the DRG
         // definition and in this set of alpha*n nodes, we try to find the
@@ -84,7 +90,11 @@ fn drg_command(m: &ArgMatches) {
         // however, the attack works by finding a set S of size 1-alpha such that
         // when *removed* from the main graph, then the main graph has a longest
         // path of a certain depth beta.
-        (AttackAlgo::ValiantSize(set_size), range)
+        match attack_type {
+            VALIANT_TYPE => (AttackAlgo::ValiantSize(set_size), range),
+            GREEDY_TYPE => (AttackAlgo::GreedySize(set_size,greedy_params), range),
+            _ => panic!("unknown type"),
+        }
     } else {
         let beta = value_t_or_exit!(sub, "beta", f64);
         let beta_size = (beta * n as f64) as usize;
@@ -93,7 +103,11 @@ fn drg_command(m: &ArgMatches) {
             interval: value_t_or_exit!(sub, "increment", f64),
             end: value_t_or_exit!(sub, "to", f64),
         };
-        (AttackAlgo::ValiantDepth(beta_size), range)
+        match attack_type {
+            VALIANT_TYPE => (AttackAlgo::ValiantDepth(beta_size), range),
+            GREEDY_TYPE =>  (AttackAlgo::GreedyDepth(beta_size,greedy_params), range),
+            _ => panic!("unknown type"),
+        }
     };
     let profile = AttackProfile {
         runs,
@@ -441,6 +455,12 @@ fn main() {
             .arg(Arg::with_name("csv")
                 .long("csv")
                 .help("output file in CSV format")
+            )
+            .arg(Arg::with_name("attack")
+                .long("attack")
+                .help("Type of attacks (valiant or greedy)")
+                .default_value(VALIANT_TYPE)
+                .takes_value(true)
             )
             .arg(Arg::with_name("size")
                 .short("n")
