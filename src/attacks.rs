@@ -218,7 +218,7 @@ impl GreedyParams {
             k: Self::k_ratio(size),
             radius: 8,
             length: 16,
-            reset: false,
+            reset: true,
             iter_topk: true,
             parallel: true,
             ..GreedyParams::default()
