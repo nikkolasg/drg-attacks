@@ -260,7 +260,12 @@ fn greedy_reduce_main(
         // TODO use p.length when more confidence in the trick
         let incidents = count_paths(g, &s, &p);
         append_removal(g, &mut s, &mut inradius, &incidents, &p);
-
+        trace!(
+            "\t\t- greedy step: exclusion set len {}, inradius len
+            {}",
+            s.size(),
+            inradius.len()
+        );
         // TODO
         // 1. Find what should be the normal behavior: clearing or continue
         // updating the inradius set
