@@ -68,7 +68,27 @@ fn drg_command(m: &ArgMatches) {
     };
     let runs = 1;
     let attack_type = sub.value_of("attack").unwrap();
-    let greedy_params = GreedyParams::standard(pow);
+    let greedy_params = {
+        let mut s = GreedyParams::standard(pow);
+        let is_radius = sub.is_present("radius");
+        let is_topk = sub.is_present("topk");
+        let is_depth = sub.is_present("depth");
+        let is_greedy_params = is_radius || is_topk || is_depth;
+        if is_greedy_params && attack_type != "greedy" {
+            panic!("greedy attack doesn't take any --radius or --topk flag");
+        }
+        if is_radius {
+            s.radius = value_t_or_exit!(sub,"radius",usize);
+        }
+        if is_topk {
+            s.k = value_t_or_exit!(sub,"topk",usize);
+        }
+        if is_depth {
+            s.length = value_t_or_exit!(sub,"depth",usize);
+        }
+        s
+    };
+
     let parse_bounds = |default:&str| -> (f64,f64) {
         let default_v = value_t_or_exit!(sub, default, f64);
         let to = if sub.is_present("to") {
@@ -511,6 +531,21 @@ fn main() {
                 .long("inc")
                 .help("increments the value of alpha/beta each step")
                 .default_value("0.1")
+                .takes_value(true)
+            )
+            .arg(Arg::with_name("radius")
+                .long("radius")
+                .help("radius when attack is greedy: degree**radius/n should be small, i.e. 5-10%") 
+                .takes_value(true)
+            )
+            .arg(Arg::with_name("topk")
+                .long("topk")
+                .help("number of nodes we select at each iteration of greedy")
+                .takes_value(true)
+            )
+            .arg(Arg::with_name("depth")
+                .long("depth")
+                .help("maximum depth used by the greedy heuristic")
                 .takes_value(true)
             )
         )

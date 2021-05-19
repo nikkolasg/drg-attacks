@@ -178,6 +178,10 @@ pub fn attack_with_profile(spec: GraphSpec, profile: &AttackProfile) -> AttackRe
 
 // GreedyParams holds the different parameters to choose for the greedy algorithm
 // such as the radius from which to delete nodes and the heuristic length.
+// NOTE: degree**radius*topk/size should be small, i.e. if it's too big the
+// radiuis set will quickly contains all the nodes so there won't be any new
+// nodesto add to the exclusion set (we don't take nodes included radius to the
+// exclusion set). 5-30% should be fine.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GreedyParams {
     // how many k nodes do we "remove" at each iteration in append_removal
@@ -218,7 +222,7 @@ impl GreedyParams {
             k: Self::k_ratio(size),
             radius: 8,
             length: 16,
-            reset: true,
+            reset: false,
             iter_topk: true,
             parallel: true,
             ..GreedyParams::default()
@@ -260,9 +264,8 @@ fn greedy_reduce_main(
         // TODO use p.length when more confidence in the trick
         let incidents = count_paths(g, &s, &p);
         append_removal(g, &mut s, &mut inradius, &incidents, &p);
-        trace!(
-            "\t\t- greedy step: exclusion set len {}, inradius len
-            {}",
+        debug!(
+            "\t-> greedy step: exclusion set len {}, inradius len {}",
             s.size(),
             inradius.len()
         );
@@ -304,6 +307,10 @@ fn append_removal(
             // optim to add as much as possible nodes: goal is to add
             // as much as possible k nodes to S in each iteration.
             if count == k {
+                trace!(
+                    "\t\t- iteration on incidence included k nodes in radius
+                -break!!"
+                );
                 break;
             }
         } else if count + excluded == k {
@@ -316,14 +323,21 @@ fn append_removal(
             // difference with previous insertion is that we only include
             // nodes NOT in the radius set
             excluded += 1;
+            trace!(
+                "\t\t-- node {} included already in radius (len {})- skip to include in
+            radius",
+                node.0,
+                inradius.len()
+            );
             continue;
         }
         set.insert(node.0);
         update_radius_set(g, node.0, inradius, params);
         count += 1;
-        debug!(
-            "\t-> iteration {} : node {} inserted -> inradius {:?}",
-            count + excluded,
+        trace!(
+            "\t-> iteration {}: {} new node inserted ({} excluded) -> inradius {:?}",
+            count,
+            excluded,
             node.0,
             inradius.len(),
         );
@@ -337,7 +351,7 @@ fn append_removal(
     // algorithm, we still add one ( so we can have a different inradius at the
     // next iteration).
     if count == 0 {
-        debug!("\t-> added by default one node {}", incidents[0].0);
+        debug!("\t\t-> added by default one node {}", incidents[0].0);
         set.insert(incidents[0].0);
         if !params.reset {
             update_radius_set(g, incidents[0].0, inradius, params);
