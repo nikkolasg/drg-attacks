@@ -73,7 +73,8 @@ fn drg_command(m: &ArgMatches) {
         let is_radius = sub.is_present("radius");
         let is_topk = sub.is_present("topk");
         let is_depth = sub.is_present("depth");
-        let is_greedy_params = is_radius || is_topk || is_depth;
+        let is_reset = sub.is_present("noreset");
+        let is_greedy_params = is_radius || is_topk || is_depth || is_reset;
         if is_greedy_params && attack_type != "greedy" {
             panic!("greedy attack doesn't take any --radius or --topk flag");
         }
@@ -86,6 +87,7 @@ fn drg_command(m: &ArgMatches) {
         if is_depth {
             s.length = value_t_or_exit!(sub,"depth",usize);
         }
+        s.reset = if is_reset { false } else { true };
         s
     };
 
@@ -547,6 +549,10 @@ fn main() {
                 .long("depth")
                 .help("maximum depth used by the greedy heuristic")
                 .takes_value(true)
+            )
+            .arg(Arg::with_name("noreset")
+                .long("noreset")
+                .help("dont reset the inradius (default true)")
             )
         )
         .subcommand(SubCommand::with_name("greedy").about("Greedy attack"))

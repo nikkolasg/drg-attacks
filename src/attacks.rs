@@ -178,10 +178,22 @@ pub fn attack_with_profile(spec: GraphSpec, profile: &AttackProfile) -> AttackRe
 
 // GreedyParams holds the different parameters to choose for the greedy algorithm
 // such as the radius from which to delete nodes and the heuristic length.
-// NOTE: degree**radius*topk/size should be small, i.e. if it's too big the
+// NOTE: degree**radius/size should be small, i.e. if it's too big the
 // radiuis set will quickly contains all the nodes so there won't be any new
 // nodesto add to the exclusion set (we don't take nodes included radius to the
 // exclusion set). 5-30% should be fine.
+// The topk parameters determines how much steps roughy the algorithm will take
+// numbers of steps ~= size / topk  (assuming the radius doesn't take every
+// nodes at some points in the computation, at which point we will include much
+// less than topk nodes at each iteration; this would happen once the G-S
+// becomes small).
+// TODO: the topk parameters and radius should evolve gradually through time and
+// not be fixed. In particular, radius should become smaller and smaller as
+// G-S becomes smaller and smaller. If topk is small enough it doesn't need to
+// change, but it should never be a high proportion of the graph size (50%)
+// because including 50% of nodes in one step will give less precise results as
+// well. Option to explore as this is likely to give better results but worse
+// performance as well.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GreedyParams {
     // how many k nodes do we "remove" at each iteration in append_removal
@@ -222,7 +234,7 @@ impl GreedyParams {
             k: Self::k_ratio(size),
             radius: 8,
             length: 16,
-            reset: false,
+            reset: true,
             iter_topk: true,
             parallel: true,
             ..GreedyParams::default()
