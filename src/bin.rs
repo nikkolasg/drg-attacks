@@ -13,8 +13,12 @@ use clap::{value_t_or_exit, App, Arg, ArgMatches, SubCommand};
 #[cfg(feature = "cpu-profile")]
 use gperftools::profiler::PROFILER;
 
-const VALIANT_TYPE :&str = "valiant";
-const GREEDY_TYPE :&str= "greedy";
+const ATTACK_CMD :&str = "attack";
+const ATTACK_VALIANT :&str = "valiant";
+const ATTACK_GREEDY :&str= "greedy";
+
+const DRG_BUCKET :&str = "bucket";
+const DRG_REN21 :&str = "ren21";
 
 /// Start profile (currently use for the Greedy attack) and dump the file in
 /// the current directory. It can later be analyzed with `pprof`, e.g.,
@@ -46,7 +50,7 @@ fn stop_profile() {}
 
 fn drg_command(m: &ArgMatches) {
     let sub = m
-        .subcommand_matches("drg")
+        .subcommand_matches(ATTACK_CMD)
         .expect("subcommand drg not recognized");
     let is_beta = sub.is_present("beta");
     let is_alpha = sub.is_present("alpha");
@@ -58,8 +62,11 @@ fn drg_command(m: &ArgMatches) {
     let pow = value_t_or_exit!(sub, "size", usize);
     let n = 1 << pow;
     let degree = value_t_or_exit!(sub, "degree", usize);
-    // TODO different algo via CLI ?
-    let algo = DRGAlgo::MetaBucket(degree);
+    let algo = match sub.value_of("drg").unwrap()  {
+        DRG_BUCKET => DRGAlgo::MetaBucket(degree),
+        DRG_REN21 => DRGAlgo::Ren21(degree),
+        _ => panic!("DRG Algo unknown"),
+    };
     let seed = rand::thread_rng().gen::<[u8; 32]>();
     let specs = GraphSpec {
         size: n,
@@ -126,8 +133,8 @@ fn drg_command(m: &ArgMatches) {
         // when *removed* from the main graph, then the main graph has a longest
         // path of a certain depth beta.
         match attack_type {
-            VALIANT_TYPE => (AttackAlgo::ValiantSize(set_size), range),
-            GREEDY_TYPE => (AttackAlgo::GreedySize(set_size,greedy_params), range),
+            ATTACK_VALIANT => (AttackAlgo::ValiantSize(set_size), range),
+            ATTACK_GREEDY => (AttackAlgo::GreedySize(set_size,greedy_params), range),
             _ => panic!("unknown type"),
         }
     } else {
@@ -140,8 +147,8 @@ fn drg_command(m: &ArgMatches) {
             interval: interval,
         };
         match attack_type {
-            VALIANT_TYPE => (AttackAlgo::ValiantDepth(beta_size), range),
-            GREEDY_TYPE =>  (AttackAlgo::GreedyDepth(beta_size,greedy_params), range),
+            ATTACK_VALIANT => (AttackAlgo::ValiantDepth(beta_size), range),
+            ATTACK_GREEDY =>  (AttackAlgo::GreedyDepth(beta_size,greedy_params), range),
             _ => panic!("unknown type"),
         }
     };
@@ -151,7 +158,7 @@ fn drg_command(m: &ArgMatches) {
         attack,
     };
 
-    println!("Running attacks on graph size {:?}", specs.size);
+    println!("Running attacks on graph {}",specs);
 
     start_profile("drg");
     let results = attack_with_profile(specs, &profile);
@@ -489,20 +496,26 @@ fn main() {
                 .default_value("10")
                 .takes_value(true),
         )
-        .subcommand(SubCommand::with_name("drg").about("general benchmark CLI to measure alphas of various configurations of DRGs")
+        .subcommand(SubCommand::with_name(ATTACK_CMD).about("general benchmark CLI to measure alphas of various configurations of DRGs")
             .arg(Arg::with_name("csv")
                 .long("csv")
                 .help("output file in CSV format")
             )
+            .arg(Arg::with_name("drg")
+                .long("drg")
+                .help("Types of DRG graph")
+                .default_value(DRG_BUCKET)
+                .takes_value(true)
+            )
             .arg(Arg::with_name("attack")
                 .long("attack")
                 .help("Type of attacks (valiant or greedy)")
-                .default_value(VALIANT_TYPE)
+                .default_value(ATTACK_VALIANT)
                 .takes_value(true)
             )
             .arg(Arg::with_name("size")
                 .short("n")
-                .long("size-n")
+                .long("size")
                 .help("Size of graph expressed as a power of 2")
                 .default_value("10")
                 .takes_value(true)
@@ -583,7 +596,7 @@ fn main() {
         baseline_large();
     } else if let Some(_) = matches.subcommand_matches("theoretical_limit") {
         theoretical_limit();
-    } else if let Some(_) = matches.subcommand_matches("drg") {
+    } else if let Some(_) = matches.subcommand_matches(ATTACK_CMD) {
         drg_command(&matches);
     } else {
         eprintln!("No subcommand entered, running `porep_comparison`");
