@@ -105,6 +105,7 @@ impl AttackResults {
         let (graph_type, degree) = match self.spec.algo {
             DRGAlgo::BucketSample => ("bucket", 2),
             DRGAlgo::MetaBucket(d) => ("meta-bucket", d),
+            DRGAlgo::Ren21(d) => ("ren21", d),
             DRGAlgo::KConnector(k) => ("Kconnector", k),
         };
         let truncate = |before: f64| (before * 100.0).floor() / 100.0;
