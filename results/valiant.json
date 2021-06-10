@@ -1,0 +1,65 @@
+[
+  {
+    "spec": {
+      "size": 1048576,
+      "algo": {
+        "MetaBucket": 6
+      }
+    },
+    "runs": 3,
+    "attack": {
+      "ValiantDepth": 314572
+    },
+    "results": [
+      {
+        "target": 0.15,
+        "mean_depth": 0.09949270884195964,
+        "mean_size": 0.4577341079711914
+      },
+      {
+        "target": 0.2,
+        "mean_depth": 0.09949270884195964,
+        "mean_size": 0.4577341079711914
+      },
+      {
+        "target": 0.25,
+        "mean_depth": 0.22475592295328775,
+        "mean_size": 0.3293790817260742
+      }
+    ]
+  },
+  {
+    "spec": {
+      "size": 1048576,
+      "algo": {
+        "MetaBucket": 6
+      }
+    },
+    "runs": 3,
+    "attack": {
+      "ValiantSize": 314572
+    },
+    "results": [
+      {
+        "target": 0.15,
+        "mean_depth": 0.46526209513346356,
+        "mean_size": 0.17741012573242188
+      },
+      {
+        "target": 0.2,
+        "mean_depth": 0.22475592295328775,
+        "mean_size": 0.3293790817260742
+      },
+      {
+        "target": 0.25,
+        "mean_depth": 0.22475592295328775,
+        "mean_size": 0.3293790817260742
+      },
+      {
+        "target": 0.3,
+        "mean_depth": 0.22475592295328775,
+        "mean_size": 0.3293790817260742
+      }
+    ]
+  }
+]

@@ -1,0 +1,30 @@
+{
+  "spec": {
+    "size": 1048576,
+    "algo": {
+      "MetaBucket": 6
+    }
+  },
+  "runs": 3,
+  "attack": {
+    "GreedySize": [
+      12,
+      {
+        "k": 800,
+        "radius": 4,
+        "length": 10,
+        "parallel": true,
+        "reset": true,
+        "iter_topk": true,
+        "use_degree": true
+      }
+    ]
+  },
+  "results": [
+    {
+      "target": 0.0000115,
+      "mean_depth": 0.9999545415242513,
+      "mean_size": 0.000011444091796875
+    }
+  ]
+}
