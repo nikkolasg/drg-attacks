@@ -60,19 +60,19 @@ fn graph_bench(m: &ArgMatches) {
         DRG_REN21 => DRGAlgo::Ren21(degree),
         _ => panic!("DRG Algo unknown"),
     };
-    let seed = rand::thread_rng().gen::<[u8; 32]>();
-    let specs = GraphSpec {
-        size: n,
-        seed: seed,
-        algo: algo,
-    };
-    let mut rng = ChaChaRng::from_seed(specs.seed.clone());
     let mut avg :f64 = 0.0;
     let runs = value_t_or_exit!(sub,"runs",usize);
-    println!("Benchmark is starting for graphs {}",specs);
+    println!("Benchmark is starting for graphs {:?}",algo);
     for i in 0..runs {
         println!("Generating graph {}/{} ...",i, runs);
         let now = Instant::now();
+        let seed = rand::thread_rng().gen::<[u8; 32]>();
+        let specs = GraphSpec {
+            size: n,
+            seed: seed,
+            algo: algo,
+        };
+        let mut rng = ChaChaRng::from_seed(specs.seed.clone());
         Graph::new_from_rng(specs, &mut rng);
         avg += now.elapsed().as_millis() as f64;
     }
