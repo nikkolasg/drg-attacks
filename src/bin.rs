@@ -68,7 +68,7 @@ fn graph_bench(m: &ArgMatches) {
     };
     let mut rng = ChaChaRng::from_seed(specs.seed.clone());
     let mut avg :f64 = 0.0;
-    let runs = 3;
+    let runs = value_t_or_exit!(sub,"runs",usize);
     println!("Benchmark is starting for graphs {}",specs);
     for i in 0..runs {
         println!("Generating graph {}/{} ...",i, runs);
@@ -543,6 +543,11 @@ fn main() {
             .arg(Arg::with_name("degree")
                 .long("degree")
                 .default_value("10")
+                .takes_value(true)
+            )
+            .arg(Arg::with_name("runs")
+                .long("runs")
+                .default_value("3")
                 .takes_value(true)
             )
         )
