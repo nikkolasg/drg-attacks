@@ -3,7 +3,7 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use sha2::Digest;
 use std::cmp::max;
 use std::collections::{HashMap, HashSet};
 use std::error;
@@ -455,7 +455,8 @@ impl Graph {
                                     // push the direct parent of i, i.e. (i-1 -> i)
                                     return node - 1;
                                 }
-                                let mut d = Sha256::new();
+                                //let mut d = Sha256::new();
+                                let mut d = blake3::Hasher::new();
                                 d.update(&self.spec.seed);
                                 d.update(&node.to_be_bytes()[..]);
                                 d.update(&parent_idx.to_be_bytes()[..]);
@@ -550,7 +551,8 @@ impl Graph {
                                     // include parent
                                     return node - 1;
                                 }
-                                let mut d = Sha256::new();
+                                //let mut d = Sha256::new();
+                                let mut d = blake3::Hasher::new();
                                 d.update(&self.spec.seed);
                                 d.update(&node.to_be_bytes()[..]);
                                 d.update(&parent_idx.to_be_bytes()[..]);
