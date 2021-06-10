@@ -8,11 +8,13 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaChaRng;
 use std::fs::File;
 use std::io::{self,Write};
+use std::time::Instant;
 
 use clap::{value_t_or_exit, App, Arg, ArgMatches, SubCommand};
 #[cfg(feature = "cpu-profile")]
 use gperftools::profiler::PROFILER;
 
+const GRAPH_BENCH_CMD :&str = "graph-bench";
 const ATTACK_CMD :&str = "attack";
 const ATTACK_VALIANT :&str = "valiant";
 const ATTACK_GREEDY :&str= "greedy";
@@ -47,6 +49,36 @@ fn start_profile(_stage: &str) {}
 #[cfg(not(feature = "cpu-profile"))]
 #[inline(always)]
 fn stop_profile() {}
+
+fn graph_bench(m: &ArgMatches) {
+    let sub = m.subcommand_matches(GRAPH_BENCH_CMD).expect("subcommand graph not recognized");
+    let pow = value_t_or_exit!(sub,"size",usize);
+    let n = 1 << pow;
+    let degree = value_t_or_exit!(sub, "degree", usize);
+    let algo = match sub.value_of("drg").unwrap()  {
+        DRG_BUCKET => DRGAlgo::MetaBucket(degree),
+        DRG_REN21 => DRGAlgo::Ren21(degree),
+        _ => panic!("DRG Algo unknown"),
+    };
+    let seed = rand::thread_rng().gen::<[u8; 32]>();
+    let specs = GraphSpec {
+        size: n,
+        seed: seed,
+        algo: algo,
+    };
+    let mut rng = ChaChaRng::from_seed(specs.seed.clone());
+    let mut avg :f64 = 0.0;
+    let runs = 3;
+    println!("Benchmark is starting for graphs {}",specs);
+    for i in 0..runs {
+        println!("Generating graph {}/{} ...",i, runs);
+        let now = Instant::now();
+        Graph::new_from_rng(specs, &mut rng);
+        avg += now.elapsed().as_millis() as f64;
+    }
+    let avg = (avg / (runs as f64)) as u64;
+    println!("Average of {}ms to generate graph", avg);
+}
 
 fn drg_command(m: &ArgMatches) {
     let sub = m
@@ -496,6 +528,24 @@ fn main() {
                 .default_value("10")
                 .takes_value(true),
         )
+        .subcommand(SubCommand::with_name(GRAPH_BENCH_CMD).about("Benchmarking graph generation")
+            .arg(Arg::with_name("size")
+                .long("size")
+                .help("power of two of the size of the graph")
+                .default_value("10")
+                .takes_value(true)
+            )
+            .arg(Arg::with_name("drg")
+                .long("drg")
+                .default_value(DRG_BUCKET)
+                .takes_value(true)
+            )
+            .arg(Arg::with_name("degree")
+                .long("degree")
+                .default_value("10")
+                .takes_value(true)
+            )
+        )
         .subcommand(SubCommand::with_name(ATTACK_CMD).about("general benchmark CLI to measure alphas of various configurations of DRGs")
             .arg(Arg::with_name("csv")
                 .long("csv")
@@ -598,6 +648,8 @@ fn main() {
         theoretical_limit();
     } else if let Some(_) = matches.subcommand_matches(ATTACK_CMD) {
         drg_command(&matches);
+    } else if let Some(_) = matches.subcommand_matches(GRAPH_BENCH_CMD) {
+        graph_bench(&matches);
     } else {
         eprintln!("No subcommand entered, running `porep_comparison`");
         porep_comparison();
